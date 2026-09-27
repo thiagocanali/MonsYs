@@ -1,4 +1,5 @@
 import { createEvent } from '../src/domain/rules.js'
+import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
 import { listIncidents, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline } from '../src/server/operations-repository.js'
 
@@ -13,6 +14,12 @@ export default async function handler(request: Request): Promise<Response> {
 
   try {
     const body = await request.json()
+    if (body.type === 'heartbeat') {
+      const heartbeat = validateHeartbeat({ ...body, timestamp: new Date(body.timestamp) })
+      const agent = { id: `agent-${heartbeat.deviceId}`, deviceId: heartbeat.deviceId, version: heartbeat.agentVersion, connected: true as const }
+      await saveAgent(agent, heartbeat.hostname, heartbeat.timestamp)
+      return Response.json({ agent, status: heartbeat.status, lastSeenAt: heartbeat.timestamp, metrics: heartbeat.metrics }, { status: 200 })
+    }
     const { rule, organizationId, deviceId, sample } = body
     if (!rule || !organizationId || !deviceId || !sample) return Response.json({ error: 'rule, organizationId, deviceId and sample are required' }, { status: 400 })
 

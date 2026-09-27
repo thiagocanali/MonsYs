@@ -73,10 +73,10 @@ export async function saveAction(action: Action) {
   )
 }
 
-export async function saveAgent(agent: Agent) {
+export async function saveAgent(agent: Agent, hostname = 'unknown', lastSeenAt = new Date()) {
   await pool.query(
-    'INSERT INTO agents (id, device_id, version, connected) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, connected = EXCLUDED.connected',
-    [agent.id, agent.deviceId, agent.version, agent.connected],
+    'INSERT INTO agents (id, device_id, version, connected, hostname, last_seen_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, connected = EXCLUDED.connected, hostname = EXCLUDED.hostname, last_seen_at = EXCLUDED.last_seen_at',
+    [agent.id, agent.deviceId, agent.version, agent.connected, hostname, lastSeenAt],
   )
 }
 
