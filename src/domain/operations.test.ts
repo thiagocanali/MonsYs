@@ -26,6 +26,30 @@ describe('Event → Incident → Runbook → Action → Agent → Result → Tim
     expect(() => workflow.queueAction(incident, 'RUN_COMMAND', 'operator-1')).toThrow('explicit approval')
   })
 
+  it('exige aprovação antes de executar ações sensíveis', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    const step = { id: 'step-command', order: 1, description: 'Executar comando', type: 'COMMAND' as const, approvalRequired: true }
+    const action = workflow.queueAction(incident, 'RUN_COMMAND', 'operator-1', step)
+
+    expect(action.approved).toBe(false)
+    expect(() => workflow.executeAction(action, agent)).toThrow('explicit approval')
+
+    workflow.approveAction(action, 'admin-1')
+    expect(action.approved).toBe(true)
+    expect(action.approvedBy).toBe('admin-1')
+    expect(() => workflow.executeAction(action, agent)).not.toThrow()
+  })
+
+  it('exige um aprovador válido', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    const step = { id: 'step-command', order: 1, description: 'Executar comando', type: 'COMMAND' as const, approvalRequired: true }
+    const action = workflow.queueAction(incident, 'RUN_COMMAND', 'operator-1', step)
+
+    expect(() => workflow.approveAction(action, '')).toThrow('Approver is required')
+  })
+
   it('não executa ação em agent desconectado', () => {
     const workflow = new OperationsWorkflow()
     const incident = workflow.createIncident(event)
