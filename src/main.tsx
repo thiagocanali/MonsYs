@@ -18,16 +18,28 @@ const demoAgent: Agent = { id: 'agent-prod-07', deviceId: 'prod-web-07', version
 function App() {
   const [active, setActive] = React.useState(0)
   const [workflowState, setWorkflowState] = React.useState({ incident: 'INC-2048', result: 'Aguardando evidência', status: 'OPEN' })
-  const runWorkflow = () => {
-    const workflow = new OperationsWorkflow()
+  const runWorkflow = async () => {
     const sample: MetricSample = { metric: 'cpu', value: 94, timestamp: new Date() }
-    const event: Event = createEvent(demoRule, 'acme', demoAgent.deviceId, sample, 'EVT-2048')
-    const incident: Incident = workflow.createIncident(event, 'INC-2048')
-    const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'Thiago Canali')
-    workflow.executeAction(action, demoAgent)
-    const result: ActionResult = workflow.recordResult(incident, action, demoAgent, true, 'Top processes coletados')
-    setWorkflowState({ incident: incident.id, result: result.output, status: incident.status })
-    setActive(6)
+    try {
+      const response = await fetch('/api/operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rule: demoRule, organizationId: 'acme', deviceId: demoAgent.deviceId, sample }),
+      })
+      if (!response.ok) throw new Error('API indisponível')
+      const payload = await response.json() as { incident: Incident }
+      setWorkflowState({ incident: payload.incident.id, result: 'Evento persistido', status: payload.incident.status })
+      setActive(6)
+    } catch {
+      const workflow = new OperationsWorkflow()
+      const event: Event = createEvent(demoRule, 'acme', demoAgent.deviceId, sample, 'EVT-2048')
+      const incident: Incident = workflow.createIncident(event, 'INC-2048')
+      const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'Thiago Canali')
+      workflow.executeAction(action, demoAgent)
+      const result: ActionResult = workflow.recordResult(incident, action, demoAgent, true, 'Top processes coletados')
+      setWorkflowState({ incident: incident.id, result: result.output, status: incident.status })
+      setActive(6)
+    }
   }
   return <div className="app">
     <aside className="sidebar">
