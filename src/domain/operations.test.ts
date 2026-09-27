@@ -1,0 +1,35 @@
+import { describe, expect, it } from 'vitest'
+import { createEvent, type Rule } from './rules.js'
+import { OperationsWorkflow, type Agent, type Runbook } from './operations.js'
+
+const rule: Rule = { id: 'rule-1', name: 'CPU alta', metric: 'cpu_usage', operator: '>', threshold: 90, duration: 0, severity: 'CRITICAL' }
+const event = createEvent(rule, 'org-1', 'device-1', { metric: 'cpu_usage', value: 95, timestamp: new Date('2026-01-01T10:00:00Z') }, 'event-1')
+const agent: Agent = { id: 'agent-1', deviceId: 'device-1', version: '1.0.0', connected: true }
+const runbook: Runbook = { id: 'rb-1', organizationId: 'org-1', name: 'Diagnóstico CPU', steps: [{ id: 'step-1', order: 1, description: 'Coletar processos', type: 'COMMAND' }] }
+
+describe('Event → Incident → Runbook → Action → Agent → Result → Timeline', () => {
+  it('executa o fluxo completo e resolve o incidente', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event, 'incident-1')
+    workflow.attachRunbook(incident, runbook)
+    const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'operator-1', runbook.steps[0])
+    workflow.executeAction(action, agent)
+    const result = workflow.recordResult(incident, action, agent, true, 'java.exe: 92%', new Date('2026-01-01T10:01:00Z'))
+    expect(result.success).toBe(true)
+    expect(incident.status).toBe('RESOLVED')
+    expect(workflow.timeline.map(entry => entry.type)).toEqual(['EVENT', 'INCIDENT', 'RUNBOOK', 'ACTION', 'AGENT', 'RESULT', 'INCIDENT'])
+  })
+
+  it('bloqueia comando arbitrário sem aprovação explícita', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    expect(() => workflow.queueAction(incident, 'RUN_COMMAND', 'operator-1')).toThrow('explicit approval')
+  })
+
+  it('não executa ação em agent desconectado', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'operator-1')
+    expect(() => workflow.executeAction(action, { ...agent, connected: false })).toThrow('not connected')
+  })
+})
