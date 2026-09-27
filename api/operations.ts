@@ -1,12 +1,19 @@
 import { createEvent } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
-import { listIncidents, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline } from '../src/server/operations-repository.js'
+import { getIncidentDetails, listIncidents, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline } from '../src/server/operations-repository.js'
 
 export default async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
-    const organizationId = new URL(request.url).searchParams.get('organizationId')
+    const searchParams = new URL(request.url).searchParams
+    const organizationId = searchParams.get('organizationId')
+    const incidentId = searchParams.get('incidentId')
     if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
+    if (incidentId) {
+      const details = await getIncidentDetails(organizationId, incidentId)
+      if (!details) return Response.json({ error: 'Incident not found' }, { status: 404 })
+      return Response.json(details)
+    }
     return Response.json(await listIncidents(organizationId))
   }
 

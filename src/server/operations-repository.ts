@@ -36,6 +36,28 @@ export async function listIncidents(organizationId: string) {
   return result.rows
 }
 
+export async function getIncidentDetails(organizationId: string, incidentId: string) {
+  const incidentResult = await pool.query(
+    'SELECT id, organization_id, event_ids, device_id, severity, status, title, created_at, updated_at FROM incidents WHERE organization_id = $1 AND id = $2',
+    [organizationId, incidentId],
+  )
+  const incident = incidentResult.rows[0]
+  if (!incident) return null
+
+  const [actions, timeline] = await Promise.all([
+    pool.query(
+      'SELECT id, incident_id, runbook_step_id, type, requested_by, requires_approval, status FROM actions WHERE incident_id = $1 ORDER BY id',
+      [incidentId],
+    ),
+    pool.query(
+      'SELECT id, incident_id, type, message, actor_id, created_at FROM timeline_entries WHERE incident_id = $1 ORDER BY created_at ASC',
+      [incidentId],
+    ),
+  ])
+
+  return { incident, actions: actions.rows, timeline: timeline.rows }
+}
+
 async function insertEvent(client: PoolClient, event: Event) {
   await client.query(
     'INSERT INTO events (id, organization_id, device_id, rule_id, severity, status, title, message, created_at, updated_at, resolved_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, resolved_at = EXCLUDED.resolved_at',
