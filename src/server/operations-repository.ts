@@ -22,10 +22,11 @@ export interface TelemetrySampleRecord {
 }
 
 export async function saveTelemetrySample(sample: TelemetrySampleRecord) {
-  await pool.query(
+  const result = await pool.query(
     'INSERT INTO telemetry_samples (id, organization_id, device_id, metric, value, recorded_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
     [sample.id, sample.organizationId, sample.deviceId, sample.metric, sample.value, sample.recordedAt],
   )
+  return result.rowCount === 1
 }
 
 export async function listTelemetrySamples(organizationId: string, deviceId: string, metric?: string) {
@@ -50,6 +51,13 @@ export async function saveEventIncident(event: Event, incident: Incident, timeli
   } finally {
     client.release()
   }
+}
+
+export async function saveIncident(incident: Incident) {
+  await pool.query(
+    'UPDATE incidents SET event_ids = $2::jsonb, severity = $3, status = $4, title = $5, updated_at = $6 WHERE id = $1 AND organization_id = $7',
+    [incident.id, JSON.stringify(incident.eventIds), incident.severity, incident.status, incident.title, incident.updatedAt, incident.organizationId],
+  )
 }
 
 export async function listIncidents(organizationId: string) {
@@ -122,8 +130,8 @@ export async function saveRunbook(runbook: Runbook) {
 
 export async function saveAction(action: Action) {
   await pool.query(
-    'INSERT INTO actions (id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, requires_approval = EXCLUDED.requires_approval, approved = EXCLUDED.approved',
-    [action.id, action.incidentId, action.runbookStepId ?? null, action.type, action.requestedBy, action.requiresApproval, action.approved, action.status],
+    'INSERT INTO actions (id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, approved_by, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET runbook_step_id = EXCLUDED.runbook_step_id, requested_by = EXCLUDED.requested_by, requires_approval = EXCLUDED.requires_approval, approved = EXCLUDED.approved, approved_by = EXCLUDED.approved_by, status = EXCLUDED.status',
+    [action.id, action.incidentId, action.runbookStepId ?? null, action.type, action.requestedBy, action.requiresApproval, action.approved, action.approvedBy ?? null, action.status],
   )
 }
 
@@ -139,6 +147,31 @@ export async function saveActionResult(result: ActionResult) {
     'INSERT INTO action_results (id, action_id, agent_id, success, output, finished_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
     [result.id, result.actionId, result.agentId, result.success, result.output, result.finishedAt],
   )
+}
+
+export interface AuditLogRecord {
+  id: string
+  organizationId: string
+  actorId: string
+  action: string
+  resourceType: string
+  resourceId: string
+  metadata?: Record<string, unknown>
+}
+
+export async function saveAuditLog(entry: AuditLogRecord) {
+  await pool.query(
+    'INSERT INTO audit_logs (id, organization_id, actor_id, action, resource_type, resource_id, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) ON CONFLICT (id) DO NOTHING',
+    [entry.id, entry.organizationId, entry.actorId, entry.action, entry.resourceType, entry.resourceId, JSON.stringify(entry.metadata ?? {})],
+  )
+}
+
+export async function listAuditLogs(organizationId: string, resourceId?: string, limit = 100, offset = 0) {
+  const result = await pool.query(
+    'SELECT id, organization_id, actor_id, action, resource_type, resource_id, metadata, created_at FROM audit_logs WHERE organization_id = $1 AND ($2::text IS NULL OR resource_id = $2) ORDER BY created_at DESC LIMIT $3 OFFSET $4',
+    [organizationId, resourceId ?? null, limit, offset],
+  )
+  return result.rows
 }
 
 export async function appendTimeline(entry: TimelineEntry) {

@@ -25,12 +25,12 @@ export function evaluateCondition(operator: Operator, value: number, threshold: 
 
 export class RuleEngine {
   private readonly activeSince = new Map<string, Date>()
-  evaluate(rule: Rule, sample: MetricSample, now = sample.timestamp): RuleEvaluation {
+  evaluate(rule: Rule, sample: MetricSample, now = sample.timestamp, scopeKey = rule.id): RuleEvaluation {
     validateRule(rule)
     if (sample.metric !== rule.metric) return { matched: false, reason: 'Metric does not match rule' }
-    if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) { this.activeSince.delete(rule.id); return { matched: false, reason: 'Condition is not satisfied' } }
-    const since = this.activeSince.get(rule.id) ?? sample.timestamp
-    this.activeSince.set(rule.id, since)
+    if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) { this.activeSince.delete(scopeKey); return { matched: false, reason: 'Condition is not satisfied' } }
+    const since = this.activeSince.get(scopeKey) ?? sample.timestamp
+    this.activeSince.set(scopeKey, since)
     const matched = (now.getTime() - since.getTime()) / 1000 >= rule.duration
     return { matched, activeSince: since, reason: matched ? 'Condition and duration are satisfied' : 'Condition is satisfied but duration is not complete' }
   }
