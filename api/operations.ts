@@ -1,7 +1,7 @@
 import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
-import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveAuditLog, saveEventIncident, saveIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
+import { getIncidentDetails, listAuditLogs, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveAuditLog, saveEventIncident, saveIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
 
 const ruleEngine = new RuleEngine()
 
@@ -12,8 +12,10 @@ export default async function handler(request: Request): Promise<Response> {
       const organizationId = searchParams.get('organizationId')?.trim()
       const incidentId = searchParams.get('incidentId')?.trim()
       const deviceId = searchParams.get('deviceId')?.trim()
+      const resourceId = searchParams.get('resourceId')?.trim()
       const metric = searchParams.get('metric')?.trim() || undefined
       if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
+      if (searchParams.get('audit') === 'true') return Response.json(await listAuditLogs(organizationId, resourceId))
       if (deviceId) return Response.json(await listTelemetrySamples(organizationId, deviceId, metric))
       if (incidentId) {
         const details = await getIncidentDetails(organizationId, incidentId)
