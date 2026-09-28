@@ -37,7 +37,7 @@ export default async function handler(request: Request): Promise<Response> {
       await saveTelemetrySample(sample)
 
       if (body.rule) {
-        const evaluation = ruleEngine.evaluate(body.rule as Rule, { metric, value, timestamp: recordedAt }, recordedAt)
+        const evaluation = ruleEngine.evaluate(body.rule as Rule, { metric, value, timestamp: recordedAt }, recordedAt, `${organizationId}:${deviceId}:${body.rule.id}`)
         if (evaluation.matched) {
           const event = createEvent(body.rule as Rule, organizationId, deviceId, { metric, value, timestamp: recordedAt })
           const workflow = new OperationsWorkflow()

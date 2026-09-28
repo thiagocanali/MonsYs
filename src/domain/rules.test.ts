@@ -24,6 +24,16 @@ describe('Rule Engine', () => {
     expect(engine.evaluate(baseRule, sample(95, 60)).matched).toBe(true)
   })
 
+  it('isola duration por dispositivo quando a mesma regra é compartilhada', () => {
+    const engine = new RuleEngine()
+    const first = new Date(1_000_000)
+    const scopedRule = { ...baseRule }
+
+    expect(engine.evaluate(scopedRule, { metric: 'cpu_usage', value: 95, timestamp: first }, first, 'org-1:device-1:r-1').matched).toBe(false)
+    expect(engine.evaluate(scopedRule, { metric: 'cpu_usage', value: 95, timestamp: new Date(1_030_000) }, new Date(1_030_000), 'org-1:device-2:r-1').matched).toBe(false)
+    expect(engine.evaluate(scopedRule, { metric: 'cpu_usage', value: 95, timestamp: new Date(1_060_000) }, new Date(1_060_000), 'org-1:device-1:r-1').matched).toBe(true)
+  })
+
   it('reseta duration quando a condição deixa de ser satisfeita', () => {
     const engine = new RuleEngine()
     engine.evaluate(baseRule, sample(95))
