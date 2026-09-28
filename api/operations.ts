@@ -49,7 +49,24 @@ export default async function handler(request: Request): Promise<Response> {
           const workflow = new OperationsWorkflow()
           const incident = workflow.createIncident(event)
           await saveEventIncident(event, incident, workflow.timeline)
-          return Response.json({ sample, evaluation, event, incident, timeline: workflow.timeline }, { status: 201 })
+          const runbook = body.runbook ?? {
+            id: 'RB-CPU-001',
+            organizationId: normalizedOrganizationId,
+            name: 'Diagnóstico de CPU',
+            steps: [{ id: 'step-top-processes', order: 1, description: 'Coletar processos no topo', type: 'COMMAND' as const }],
+          }
+          const agent = body.agent ?? { id: `agent-${normalizedDeviceId}`, deviceId: normalizedDeviceId, version: 'unknown', connected: true }
+          const action = workflow.queueAction(incident, body.actionType ?? 'GET_TOP_PROCESSES', body.requestedBy ?? 'system', runbook.steps[0])
+          workflow.attachRunbook(incident, runbook)
+          workflow.executeAction(action, agent)
+          const result = workflow.recordResult(incident, action, agent, true, body.output ?? 'Diagnóstico executado')
+          await saveRunbook(runbook)
+          await saveAgent(agent)
+          await saveIncident(incident)
+          await saveAction(action)
+          await saveActionResult(result)
+          for (const entry of workflow.timeline.slice(2)) await appendTimeline(entry)
+          return Response.json({ sample, evaluation, event, incident, runbook, action, agent, result, timeline: workflow.timeline }, { status: 201 })
         }
         return Response.json({ sample, evaluation }, { status: 201 })
       }
