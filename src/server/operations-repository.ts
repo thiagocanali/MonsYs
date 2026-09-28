@@ -12,6 +12,30 @@ function incidentRow(incident: Incident) {
   return [incident.id, incident.organizationId, JSON.stringify(incident.eventIds), incident.deviceId, incident.severity, incident.status, incident.title, incident.createdAt, incident.updatedAt]
 }
 
+export interface TelemetrySampleRecord {
+  id: string
+  organizationId: string
+  deviceId: string
+  metric: string
+  value: number
+  recordedAt: Date
+}
+
+export async function saveTelemetrySample(sample: TelemetrySampleRecord) {
+  await pool.query(
+    'INSERT INTO telemetry_samples (id, organization_id, device_id, metric, value, recorded_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
+    [sample.id, sample.organizationId, sample.deviceId, sample.metric, sample.value, sample.recordedAt],
+  )
+}
+
+export async function listTelemetrySamples(organizationId: string, deviceId: string, metric?: string) {
+  const result = await pool.query(
+    'SELECT id, organization_id, device_id, metric, value, recorded_at, created_at FROM telemetry_samples WHERE organization_id = $1 AND device_id = $2 AND ($3::text IS NULL OR metric = $3) ORDER BY recorded_at DESC LIMIT 500',
+    [organizationId, deviceId, metric ?? null],
+  )
+  return result.rows
+}
+
 export async function saveEventIncident(event: Event, incident: Incident, timeline: TimelineEntry[]) {
   const client = await pool.connect()
   try {

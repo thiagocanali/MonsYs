@@ -1,14 +1,17 @@
 import { createEvent } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
-import { getIncidentDetails, listIncidents, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline } from '../src/server/operations-repository.js'
+import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
 
 export default async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
     const searchParams = new URL(request.url).searchParams
     const organizationId = searchParams.get('organizationId')
     const incidentId = searchParams.get('incidentId')
+    const deviceId = searchParams.get('deviceId')
+    const metric = searchParams.get('metric') ?? undefined
     if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
+    if (deviceId) return Response.json(await listTelemetrySamples(organizationId, deviceId, metric))
     if (incidentId) {
       const details = await getIncidentDetails(organizationId, incidentId)
       if (!details) return Response.json({ error: 'Incident not found' }, { status: 404 })
@@ -21,6 +24,17 @@ export default async function handler(request: Request): Promise<Response> {
 
   try {
     const body = await request.json()
+    if (body.type === 'telemetry') {
+      const { organizationId, deviceId, metric, value, timestamp } = body
+      if (!organizationId || !deviceId || typeof metric !== 'string' || !Number.isFinite(value)) {
+        return Response.json({ error: 'organizationId, deviceId, metric and numeric value are required' }, { status: 400 })
+      }
+      const recordedAt = new Date(timestamp ?? Date.now())
+      if (Number.isNaN(recordedAt.getTime())) return Response.json({ error: 'timestamp must be a valid date' }, { status: 400 })
+      const sample = { id: body.id ?? crypto.randomUUID(), organizationId, deviceId, metric, value, recordedAt }
+      await saveTelemetrySample(sample)
+      return Response.json({ sample }, { status: 201 })
+    }
     if (body.type === 'heartbeat') {
       const heartbeat = validateHeartbeat({ ...body, timestamp: new Date(body.timestamp) })
       const agent = { id: `agent-${heartbeat.deviceId}`, deviceId: heartbeat.deviceId, version: heartbeat.agentVersion, connected: true as const }
