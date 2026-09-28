@@ -28,19 +28,24 @@ export default async function handler(request: Request): Promise<Response> {
     const body = await request.json()
     if (body.type === 'telemetry') {
       const { organizationId, deviceId, metric, value, timestamp } = body
-      if (!organizationId || !deviceId || typeof metric !== 'string' || !Number.isFinite(value)) {
-        return Response.json({ error: 'organizationId, deviceId, metric and numeric value are required' }, { status: 400 })
+      const normalizedOrganizationId = typeof organizationId === 'string' ? organizationId.trim() : ''
+      const normalizedDeviceId = typeof deviceId === 'string' ? deviceId.trim() : ''
+      const normalizedMetric = typeof metric === 'string' ? metric.trim() : ''
+      if (!normalizedOrganizationId || !normalizedDeviceId || !normalizedMetric || normalizedMetric.length > 100 || normalizedOrganizationId.length > 200 || normalizedDeviceId.length > 200 || !Number.isFinite(value)) {
+        return Response.json({ error: 'organizationId, deviceId and a valid metric/value are required' }, { status: 400 })
       }
       const recordedAt = new Date(timestamp ?? Date.now())
       if (Number.isNaN(recordedAt.getTime())) return Response.json({ error: 'timestamp must be a valid date' }, { status: 400 })
-      const sample = { id: body.id ?? crypto.randomUUID(), organizationId, deviceId, metric, value, recordedAt }
+      const sampleId = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : crypto.randomUUID()
+      if (sampleId.length > 200) return Response.json({ error: 'id must contain at most 200 characters' }, { status: 400 })
+      const sample = { id: sampleId, organizationId: normalizedOrganizationId, deviceId: normalizedDeviceId, metric: normalizedMetric, value, recordedAt }
       const inserted = await saveTelemetrySample(sample)
       if (!inserted) return Response.json({ sample, duplicate: true }, { status: 200 })
 
       if (body.rule) {
-        const evaluation = ruleEngine.evaluate(body.rule as Rule, { metric, value, timestamp: recordedAt }, recordedAt, `${organizationId}:${deviceId}:${body.rule.id}`)
+        const evaluation = ruleEngine.evaluate(body.rule as Rule, { metric: normalizedMetric, value, timestamp: recordedAt }, recordedAt, `${normalizedOrganizationId}:${normalizedDeviceId}:${body.rule.id}`)
         if (evaluation.matched) {
-          const event = createEvent(body.rule as Rule, organizationId, deviceId, { metric, value, timestamp: recordedAt })
+          const event = createEvent(body.rule as Rule, normalizedOrganizationId, normalizedDeviceId, { metric: normalizedMetric, value, timestamp: recordedAt })
           const workflow = new OperationsWorkflow()
           const incident = workflow.createIncident(event)
           await saveEventIncident(event, incident, workflow.timeline)
