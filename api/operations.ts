@@ -1,7 +1,9 @@
-import { createEvent } from '../src/domain/rules.js'
+import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
 import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
+
+const ruleEngine = new RuleEngine()
 
 export default async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
@@ -33,6 +35,19 @@ export default async function handler(request: Request): Promise<Response> {
       if (Number.isNaN(recordedAt.getTime())) return Response.json({ error: 'timestamp must be a valid date' }, { status: 400 })
       const sample = { id: body.id ?? crypto.randomUUID(), organizationId, deviceId, metric, value, recordedAt }
       await saveTelemetrySample(sample)
+
+      if (body.rule) {
+        const evaluation = ruleEngine.evaluate(body.rule as Rule, { metric, value, timestamp: recordedAt }, recordedAt)
+        if (evaluation.matched) {
+          const event = createEvent(body.rule as Rule, organizationId, deviceId, { metric, value, timestamp: recordedAt })
+          const workflow = new OperationsWorkflow()
+          const incident = workflow.createIncident(event)
+          await saveEventIncident(event, incident, workflow.timeline)
+          return Response.json({ sample, evaluation, event, incident, timeline: workflow.timeline }, { status: 201 })
+        }
+        return Response.json({ sample, evaluation }, { status: 201 })
+      }
+
       return Response.json({ sample }, { status: 201 })
     }
     if (body.type === 'heartbeat') {
