@@ -1,7 +1,7 @@
 import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
-import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveEventIncident, saveIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
+import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveAuditLog, saveEventIncident, saveIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
 
 const ruleEngine = new RuleEngine()
 
@@ -72,6 +72,7 @@ export default async function handler(request: Request): Promise<Response> {
           await saveIncident(incident)
           await saveAction(action)
           await saveActionResult(result)
+          await saveAuditLog({ id: crypto.randomUUID(), organizationId: normalizedOrganizationId, actorId: body.requestedBy ?? 'system', action: 'AUTOMATED_REMEDIATION', resourceType: 'incident', resourceId: incident.id, metadata: { ruleId: body.rule.id, actionType: action.type, resultId: result.id } })
           for (const entry of workflow.timeline.slice(2)) await appendTimeline(entry)
           return Response.json({ sample, evaluation, event, incident, runbook, action, agent, result, timeline: workflow.timeline }, { status: 201 })
         }
@@ -118,6 +119,7 @@ export default async function handler(request: Request): Promise<Response> {
     await saveIncident(incident)
     await saveAction(action)
     await saveActionResult(result)
+    await saveAuditLog({ id: crypto.randomUUID(), organizationId: normalizedOrganizationId, actorId: body.requestedBy ?? 'system', action: 'EVENT_REMEDIATION', resourceType: 'incident', resourceId: incident.id, metadata: { ruleId: event.ruleId, actionType: action.type, resultId: result.id } })
     for (const entry of workflow.timeline.slice(2)) await appendTimeline(entry)
     return Response.json({ event, incident, runbook, action, agent, result, timeline: workflow.timeline }, { status: 201 })
   } catch (error) {

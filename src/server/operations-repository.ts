@@ -149,6 +149,23 @@ export async function saveActionResult(result: ActionResult) {
   )
 }
 
+export interface AuditLogRecord {
+  id: string
+  organizationId: string
+  actorId: string
+  action: string
+  resourceType: string
+  resourceId: string
+  metadata?: Record<string, unknown>
+}
+
+export async function saveAuditLog(entry: AuditLogRecord) {
+  await pool.query(
+    'INSERT INTO audit_logs (id, organization_id, actor_id, action, resource_type, resource_id, metadata) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) ON CONFLICT (id) DO NOTHING',
+    [entry.id, entry.organizationId, entry.actorId, entry.action, entry.resourceType, entry.resourceId, JSON.stringify(entry.metadata ?? {})],
+  )
+}
+
 export async function appendTimeline(entry: TimelineEntry) {
   await insertTimeline(pool, entry)
 }
