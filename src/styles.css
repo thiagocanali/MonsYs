@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
 
+.persisted-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 0 0;border-top:1px solid #1b3045;margin-top:14px}.persisted-summary strong{font-size:12px}.persisted-summary>span{font-size:11px;color:#7890a5}.incident-detail{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px;margin-top:12px;border:1px solid #29445c;border-radius:8px;background:#0b1c2e}.incident-detail>div{display:flex;align-items:center;gap:10px}.incident-detail strong{font-size:12px}.incident-detail>span{font-size:10px;color:#8ca2b5}.incident-detail .link{margin-left:auto}
+
 @media (max-width: 900px){
   .app .sidebar{width:188px!important;padding-inline:10px!important}
   .app main{min-width:0!important;padding:30px 24px!important}
