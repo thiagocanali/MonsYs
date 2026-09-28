@@ -63,20 +63,26 @@ export default async function handler(request: Request): Promise<Response> {
       return Response.json({ agent, status: heartbeat.status, lastSeenAt: heartbeat.timestamp, metrics: heartbeat.metrics }, { status: 200 })
     }
     const { rule, organizationId, deviceId, sample } = body
-    if (!rule || !organizationId || !deviceId || !sample) return Response.json({ error: 'rule, organizationId, deviceId and sample are required' }, { status: 400 })
+    const normalizedOrganizationId = typeof organizationId === 'string' ? organizationId.trim() : ''
+    const normalizedDeviceId = typeof deviceId === 'string' ? deviceId.trim() : ''
+    if (!rule || !normalizedOrganizationId || !normalizedDeviceId || !sample || typeof sample.metric !== 'string' || !Number.isFinite(sample.value)) {
+      return Response.json({ error: 'rule, organizationId, deviceId and a valid sample are required' }, { status: 400 })
+    }
+    const sampleTimestamp = new Date(sample.timestamp ?? Date.now())
+    if (Number.isNaN(sampleTimestamp.getTime())) return Response.json({ error: 'sample.timestamp must be a valid date' }, { status: 400 })
 
-    const event = createEvent(rule, organizationId, deviceId, { ...sample, timestamp: new Date(sample.timestamp) })
+    const event = createEvent(rule, normalizedOrganizationId, normalizedDeviceId, { ...sample, metric: sample.metric.trim(), timestamp: sampleTimestamp })
     const workflow = new OperationsWorkflow()
     const incident = workflow.createIncident(event)
     await saveEventIncident(event, incident, workflow.timeline)
 
     const runbook = body.runbook ?? {
       id: 'RB-CPU-001',
-      organizationId,
+      organizationId: normalizedOrganizationId,
       name: 'Diagnóstico de CPU',
       steps: [{ id: 'step-top-processes', order: 1, description: 'Coletar processos no topo', type: 'COMMAND' as const }],
     }
-    const agent = body.agent ?? { id: `agent-${deviceId}`, deviceId, version: 'unknown', connected: true }
+    const agent = body.agent ?? { id: `agent-${normalizedDeviceId}`, deviceId: normalizedDeviceId, version: 'unknown', connected: true }
     const actionType = body.actionType ?? 'GET_TOP_PROCESSES'
     const action = workflow.queueAction(incident, actionType, body.requestedBy ?? 'system', runbook.steps[0])
     workflow.attachRunbook(incident, runbook)
