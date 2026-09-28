@@ -122,7 +122,7 @@ export async function saveRunbook(runbook: Runbook) {
 
 export async function saveAction(action: Action) {
   await pool.query(
-    'INSERT INTO actions (id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, requires_approval = EXCLUDED.requires_approval, approved = EXCLUDED.approved',
+    'INSERT INTO actions (id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, approved_by, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET runbook_step_id = EXCLUDED.runbook_step_id, requested_by = EXCLUDED.requested_by, requires_approval = EXCLUDED.requires_approval, approved = EXCLUDED.approved, approved_by = EXCLUDED.approved_by, status = EXCLUDED.status',
     [action.id, action.incidentId, action.runbookStepId ?? null, action.type, action.requestedBy, action.requiresApproval, action.approved, action.status],
   )
 }

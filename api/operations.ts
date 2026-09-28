@@ -51,7 +51,7 @@ export default async function handler(request: Request): Promise<Response> {
       return Response.json({ sample }, { status: 201 })
     }
     if (body.type === 'heartbeat') {
-      const heartbeat = validateHeartbeat({ ...body, timestamp: new Date(body.timestamp) })
+      const heartbeat = validateHeartbeat({ ...body, timestamp: new Date(body.timestamp ?? Date.now()) })
       const agent = { id: `agent-${heartbeat.deviceId}`, deviceId: heartbeat.deviceId, version: heartbeat.agentVersion, connected: true as const }
       await saveAgent(agent, heartbeat.hostname, heartbeat.timestamp)
       return Response.json({ agent, status: heartbeat.status, lastSeenAt: heartbeat.timestamp, metrics: heartbeat.metrics }, { status: 200 })
