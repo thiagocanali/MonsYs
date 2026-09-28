@@ -20,6 +20,31 @@ describe('Event → Incident → Runbook → Action → Agent → Result → Tim
     expect(workflow.timeline.map(entry => entry.type)).toEqual(['EVENT', 'INCIDENT', 'RUNBOOK', 'ACTION', 'AGENT', 'RESULT', 'INCIDENT'])
   })
 
+  it('reconhece e fecha um incidente somente nas transições válidas', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+
+    expect(() => workflow.closeIncident(incident, 'operator-1')).toThrow('Only resolved')
+    workflow.acknowledgeIncident(incident, 'operator-1')
+    expect(incident.status).toBe('ACKNOWLEDGED')
+    expect(workflow.timeline.at(-1)?.message).toBe('Incidente reconhecido')
+
+    const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'operator-1')
+    workflow.executeAction(action, agent)
+    workflow.recordResult(incident, action, agent, true, 'ok')
+    workflow.closeIncident(incident, 'operator-1')
+
+    expect(incident.status).toBe('CLOSED')
+    expect(workflow.timeline.at(-1)?.message).toBe('Incidente fechado')
+  })
+
+  it('exige ator para reconhecer ou fechar incidente', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    expect(() => workflow.acknowledgeIncident(incident, '')).toThrow('Actor is required')
+    expect(() => workflow.closeIncident(incident, '')).toThrow('Actor is required')
+  })
+
   it('bloqueia comando arbitrário sem aprovação explícita', () => {
     const workflow = new OperationsWorkflow()
     const incident = workflow.createIncident(event)

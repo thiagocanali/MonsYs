@@ -21,7 +21,23 @@ export class OperationsWorkflow {
     this.addTimeline(incident.id, 'INCIDENT', 'Incidente criado')
     return incident
   }
+  acknowledgeIncident(incident: Incident, actorId: string): Incident {
+    if (!actorId) throw new Error('Actor is required')
+    if (incident.status !== 'OPEN') throw new Error('Only open incidents can be acknowledged')
+    incident.status = 'ACKNOWLEDGED'
+    incident.updatedAt = new Date()
+    this.addTimeline(incident.id, 'INCIDENT', 'Incidente reconhecido', actorId)
+    return incident
+  }
   attachRunbook(incident: Incident, runbook: Runbook): Runbook { this.addTimeline(incident.id, 'RUNBOOK', `Runbook associado: ${runbook.name}`); return runbook }
+  closeIncident(incident: Incident, actorId: string): Incident {
+    if (!actorId) throw new Error('Actor is required')
+    if (incident.status !== 'RESOLVED') throw new Error('Only resolved incidents can be closed')
+    incident.status = 'CLOSED'
+    incident.updatedAt = new Date()
+    this.addTimeline(incident.id, 'INCIDENT', 'Incidente fechado', actorId)
+    return incident
+  }
   queueAction(incident: Incident, type: ActionType, requestedBy: string, step?: RunbookStep): Action {
     if (type === 'RUN_COMMAND' && !step?.approvalRequired) throw new Error('Arbitrary commands require explicit approval')
     const requiresApproval = Boolean(step?.approvalRequired)
