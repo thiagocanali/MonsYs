@@ -1,7 +1,7 @@
 import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
-import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveEventIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
+import { getIncidentDetails, listIncidents, listTelemetrySamples, saveAction, saveActionResult, saveAgent, saveEventIncident, saveIncident, saveRunbook, appendTimeline, saveTelemetrySample } from '../src/server/operations-repository.js'
 
 const ruleEngine = new RuleEngine()
 
@@ -79,6 +79,7 @@ export default async function handler(request: Request): Promise<Response> {
 
     await saveRunbook(runbook)
     await saveAgent(agent)
+    await saveIncident(incident)
     await saveAction(action)
     await saveActionResult(result)
     for (const entry of workflow.timeline.slice(2)) await appendTimeline(entry)

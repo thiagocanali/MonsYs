@@ -52,6 +52,13 @@ export async function saveEventIncident(event: Event, incident: Incident, timeli
   }
 }
 
+export async function saveIncident(incident: Incident) {
+  await pool.query(
+    'UPDATE incidents SET event_ids = $2::jsonb, severity = $3, status = $4, title = $5, updated_at = $6 WHERE id = $1 AND organization_id = $7',
+    [incident.id, JSON.stringify(incident.eventIds), incident.severity, incident.status, incident.title, incident.updatedAt, incident.organizationId],
+  )
+}
+
 export async function listIncidents(organizationId: string) {
   const result = await pool.query(
     'SELECT id, organization_id, event_ids, device_id, severity, status, title, created_at, updated_at FROM incidents WHERE organization_id = $1 ORDER BY created_at DESC',
