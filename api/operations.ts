@@ -34,7 +34,8 @@ export default async function handler(request: Request): Promise<Response> {
       const recordedAt = new Date(timestamp ?? Date.now())
       if (Number.isNaN(recordedAt.getTime())) return Response.json({ error: 'timestamp must be a valid date' }, { status: 400 })
       const sample = { id: body.id ?? crypto.randomUUID(), organizationId, deviceId, metric, value, recordedAt }
-      await saveTelemetrySample(sample)
+      const inserted = await saveTelemetrySample(sample)
+      if (!inserted) return Response.json({ sample, duplicate: true }, { status: 200 })
 
       if (body.rule) {
         const evaluation = ruleEngine.evaluate(body.rule as Rule, { metric, value, timestamp: recordedAt }, recordedAt, `${organizationId}:${deviceId}:${body.rule.id}`)

@@ -22,10 +22,11 @@ export interface TelemetrySampleRecord {
 }
 
 export async function saveTelemetrySample(sample: TelemetrySampleRecord) {
-  await pool.query(
+  const result = await pool.query(
     'INSERT INTO telemetry_samples (id, organization_id, device_id, metric, value, recorded_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
     [sample.id, sample.organizationId, sample.deviceId, sample.metric, sample.value, sample.recordedAt],
   )
+  return result.rowCount === 1
 }
 
 export async function listTelemetrySamples(organizationId: string, deviceId: string, metric?: string) {
