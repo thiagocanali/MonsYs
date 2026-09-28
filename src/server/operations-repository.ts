@@ -70,7 +70,7 @@ export async function getIncidentDetails(organizationId: string, incidentId: str
 
   const [actions, timeline] = await Promise.all([
     pool.query(
-      'SELECT id, incident_id, runbook_step_id, type, requested_by, requires_approval, status FROM actions WHERE incident_id = $1 ORDER BY id',
+      'SELECT id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, status FROM actions WHERE incident_id = $1 ORDER BY id',
       [incidentId],
     ),
     pool.query(
@@ -114,8 +114,8 @@ export async function saveRunbook(runbook: Runbook) {
 
 export async function saveAction(action: Action) {
   await pool.query(
-    'INSERT INTO actions (id, incident_id, runbook_step_id, type, requested_by, requires_approval, status) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, requires_approval = EXCLUDED.requires_approval',
-    [action.id, action.incidentId, action.runbookStepId ?? null, action.type, action.requestedBy, action.requiresApproval, action.status],
+    'INSERT INTO actions (id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, requires_approval = EXCLUDED.requires_approval, approved = EXCLUDED.approved',
+    [action.id, action.incidentId, action.runbookStepId ?? null, action.type, action.requestedBy, action.requiresApproval, action.approved, action.status],
   )
 }
 
