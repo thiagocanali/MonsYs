@@ -56,4 +56,28 @@ describe('Event → Incident → Runbook → Action → Agent → Result → Tim
     const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'operator-1')
     expect(() => workflow.executeAction(action, { ...agent, connected: false })).toThrow('not connected')
   })
+
+  it('não aceita resultado antes do agent executar a ação', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'operator-1')
+
+    expect(() => workflow.recordResult(incident, action, agent, true, 'resultado')).toThrow('must be running')
+  })
+
+  it('mantém incidente em investigação quando a ação falha', () => {
+    const workflow = new OperationsWorkflow()
+    const incident = workflow.createIncident(event)
+    const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'operator-1')
+    workflow.executeAction(action, agent)
+    const finishedAt = new Date('2026-01-01T10:02:00Z')
+
+    const result = workflow.recordResult(incident, action, agent, false, 'service unavailable', finishedAt)
+
+    expect(result.success).toBe(false)
+    expect(action.status).toBe('FAILED')
+    expect(incident.status).toBe('IN_PROGRESS')
+    expect(incident.updatedAt).toBe(finishedAt)
+    expect(workflow.timeline.at(-1)?.message).toBe('Incidente permanece em investigação')
+  })
 })

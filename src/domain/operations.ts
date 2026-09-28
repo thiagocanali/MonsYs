@@ -41,10 +41,13 @@ export class OperationsWorkflow {
     action.status = 'RUNNING'; this.addTimeline(action.incidentId, 'AGENT', `Ação enviada ao agent ${agent.id}`)
   }
   recordResult(incident: Incident, action: Action, agent: Agent, success: boolean, output: string, finishedAt = new Date()): ActionResult {
+    if (action.status !== 'RUNNING') throw new Error('Action must be running before recording a result')
     action.status = success ? 'SUCCEEDED' : 'FAILED'
     const result = { id: crypto.randomUUID(), actionId: action.id, agentId: agent.id, success, output, finishedAt }
+    incident.updatedAt = finishedAt
     this.addTimeline(incident.id, 'RESULT', success ? 'Ação concluída com sucesso' : 'Ação falhou', agent.id)
-    if (success) { incident.status = 'RESOLVED'; incident.updatedAt = finishedAt; this.addTimeline(incident.id, 'INCIDENT', 'Incidente resolvido', agent.id) }
+    if (success) { incident.status = 'RESOLVED'; this.addTimeline(incident.id, 'INCIDENT', 'Incidente resolvido', agent.id) }
+    else this.addTimeline(incident.id, 'INCIDENT', 'Incidente permanece em investigação', agent.id)
     return result
   }
   addTimeline(incidentId: string, type: TimelineType, message: string, actorId?: string): TimelineEntry { const entry = { id: crypto.randomUUID(), incidentId, type, message, actorId, createdAt: new Date() }; this.timeline.push(entry); return entry }
