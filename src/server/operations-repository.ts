@@ -68,18 +68,26 @@ export async function getIncidentDetails(organizationId: string, incidentId: str
   const incident = incidentResult.rows[0]
   if (!incident) return null
 
-  const [actions, timeline] = await Promise.all([
+  const [actions, timeline, runbooks, results] = await Promise.all([
     pool.query(
-      'SELECT id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, status FROM actions WHERE incident_id = $1 ORDER BY id',
+      'SELECT id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, approved_by, status FROM actions WHERE incident_id = $1 ORDER BY id',
       [incidentId],
     ),
     pool.query(
       'SELECT id, incident_id, type, message, actor_id, created_at FROM timeline_entries WHERE incident_id = $1 ORDER BY created_at ASC',
       [incidentId],
     ),
+    pool.query(
+      'SELECT DISTINCT r.id, r.organization_id, r.name, r.steps FROM runbooks r JOIN actions a ON EXISTS (SELECT 1 FROM jsonb_array_elements(r.steps) AS step WHERE step->>\'id\' = a.runbook_step_id) WHERE a.incident_id = $1',
+      [incidentId],
+    ).catch(() => ({ rows: [] })),
+    pool.query(
+      'SELECT ar.id, ar.action_id, ar.agent_id, ar.success, ar.output, ar.finished_at FROM action_results ar JOIN actions a ON a.id = ar.action_id WHERE a.incident_id = $1 ORDER BY ar.finished_at ASC',
+      [incidentId],
+    ),
   ])
 
-  return { incident, actions: actions.rows, timeline: timeline.rows }
+  return { incident, actions: actions.rows, runbooks: runbooks.rows, results: results.rows, timeline: timeline.rows }
 }
 
 async function insertEvent(client: PoolClient, event: Event) {
