@@ -7,25 +7,32 @@ const ruleEngine = new RuleEngine()
 
 export default async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
-    const searchParams = new URL(request.url).searchParams
-    const organizationId = searchParams.get('organizationId')
-    const incidentId = searchParams.get('incidentId')
-    const deviceId = searchParams.get('deviceId')
-    const metric = searchParams.get('metric') ?? undefined
-    if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
-    if (deviceId) return Response.json(await listTelemetrySamples(organizationId, deviceId, metric))
-    if (incidentId) {
-      const details = await getIncidentDetails(organizationId, incidentId)
-      if (!details) return Response.json({ error: 'Incident not found' }, { status: 404 })
-      return Response.json(details)
+    try {
+      const searchParams = new URL(request.url).searchParams
+      const organizationId = searchParams.get('organizationId')?.trim()
+      const incidentId = searchParams.get('incidentId')?.trim()
+      const deviceId = searchParams.get('deviceId')?.trim()
+      const metric = searchParams.get('metric')?.trim() || undefined
+      if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
+      if (deviceId) return Response.json(await listTelemetrySamples(organizationId, deviceId, metric))
+      if (incidentId) {
+        const details = await getIncidentDetails(organizationId, incidentId)
+        if (!details) return Response.json({ error: 'Incident not found' }, { status: 404 })
+        return Response.json(details)
+      }
+      return Response.json(await listIncidents(organizationId))
+    } catch {
+      return Response.json({ error: 'Unable to load operations data' }, { status: 500 })
     }
-    return Response.json(await listIncidents(organizationId))
   }
 
   if (request.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405 })
 
   try {
     const body = await request.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Request body must be a JSON object' }, { status: 400 })
+    }
     if (body.type === 'telemetry') {
       const { organizationId, deviceId, metric, value, timestamp } = body
       const normalizedOrganizationId = typeof organizationId === 'string' ? organizationId.trim() : ''
