@@ -166,10 +166,10 @@ export async function saveAuditLog(entry: AuditLogRecord) {
   )
 }
 
-export async function listAuditLogs(organizationId: string, resourceId?: string) {
+export async function listAuditLogs(organizationId: string, resourceId?: string, limit = 100, offset = 0) {
   const result = await pool.query(
-    'SELECT id, organization_id, actor_id, action, resource_type, resource_id, metadata, created_at FROM audit_logs WHERE organization_id = $1 AND ($2::text IS NULL OR resource_id = $2) ORDER BY created_at DESC LIMIT 200',
-    [organizationId, resourceId ?? null],
+    'SELECT id, organization_id, actor_id, action, resource_type, resource_id, metadata, created_at FROM audit_logs WHERE organization_id = $1 AND ($2::text IS NULL OR resource_id = $2) ORDER BY created_at DESC LIMIT $3 OFFSET $4',
+    [organizationId, resourceId ?? null, limit, offset],
   )
   return result.rows
 }

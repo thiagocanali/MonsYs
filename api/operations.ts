@@ -14,8 +14,12 @@ export default async function handler(request: Request): Promise<Response> {
       const deviceId = searchParams.get('deviceId')?.trim()
       const resourceId = searchParams.get('resourceId')?.trim()
       const metric = searchParams.get('metric')?.trim() || undefined
+      const requestedLimit = Number.parseInt(searchParams.get('limit') ?? '100', 10)
+      const requestedOffset = Number.parseInt(searchParams.get('offset') ?? '0', 10)
+      const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 100
+      const offset = Number.isInteger(requestedOffset) ? Math.max(requestedOffset, 0) : 0
       if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
-      if (searchParams.get('audit') === 'true') return Response.json(await listAuditLogs(organizationId, resourceId))
+      if (searchParams.get('audit') === 'true') return Response.json(await listAuditLogs(organizationId, resourceId, limit, offset))
       if (deviceId) return Response.json(await listTelemetrySamples(organizationId, deviceId, metric))
       if (incidentId) {
         const details = await getIncidentDetails(organizationId, incidentId)
