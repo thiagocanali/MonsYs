@@ -1,7 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { createEvent, type Event, type MetricSample, type Rule } from './domain/rules.js'
-import { OperationsWorkflow, type Incident, type ActionResult, type Agent } from './domain/operations.js'
+import type { MetricSample, Rule } from './domain/rules.js'
+import type { Incident } from './domain/operations.js'
 import './styles.css'
 
 const stages = [
@@ -13,7 +13,6 @@ const events = [
   { severity: 'INFO', title: 'Backup concluído com sucesso', device: 'db-primary-01', time: 'há 12 min', color: 'info' }
 ]
 const demoRule: Rule = { id: 'rule-cpu-90', name: 'CPU acima de 90% por 10 minutos', metric: 'cpu', operator: '>', threshold: 90, duration: 600, severity: 'CRITICAL', runbookId: 'RB-CPU-001' }
-const demoAgent: Agent = { id: 'agent-prod-07', deviceId: 'prod-web-07', version: '1.4.2', connected: true }
 
 function App() {
   const [active, setActive] = React.useState(0)
@@ -55,13 +54,11 @@ function App() {
       setWorkflowState({ incident: payload.incident.id, result: 'Evento persistido', status: payload.incident.status })
       setActive(6)
     } catch {
-      const workflow = new OperationsWorkflow()
-      const event: Event = createEvent(demoRule, 'acme', demoAgent.deviceId, sample, 'EVT-2048')
-      const incident: Incident = workflow.createIncident(event, 'INC-2048')
-      const action = workflow.queueAction(incident, 'GET_TOP_PROCESSES', 'Thiago Canali')
-      workflow.executeAction(action, demoAgent)
-      const result: ActionResult = workflow.recordResult(incident, action, demoAgent, true, 'Top processes coletados')
-      setWorkflowState({ incident: incident.id, result: result.output, status: incident.status })
+      setWorkflowState({
+        incident: 'Não criado',
+        result: 'Falha ao conectar à API. Nenhuma ação foi executada.',
+        status: 'ERROR',
+      })
       setActive(6)
     }
   }
