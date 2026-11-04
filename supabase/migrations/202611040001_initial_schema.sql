@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS organizations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Bootstrap the tenant currently hardcoded by the demo UI and API requests.
+-- Replace/rename this demo organization when implementing real tenant onboarding.
+INSERT INTO organizations (id, name)
+VALUES ('acme', 'Acme Operations')
+ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS organization_members (
   organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
