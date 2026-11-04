@@ -10,6 +10,8 @@ MonsYs currently expects PostgreSQL through the `DATABASE_URL` environment varia
 4. Configure the server-side `DATABASE_URL` using the connection string from Supabase. Prefer the provider-recommended connection mode for the deployment runtime.
 5. Never expose the database connection string, service-role key, or other secrets in frontend variables or Git.
 
+The migration bootstraps the demo tenant `acme` / `Acme Operations`, because the current UI sends `organizationId=acme`. This is only a development bootstrap value; replace it with a real tenant onboarding flow before multi-tenant production use.
+
 ## Important security status
 
 This migration creates the initial tables and organization membership structure. It does not complete application authentication, tenant authorization, or Row Level Security. The current API still accepts caller-provided organization identifiers. Do not use this deployment with real customer data until API authentication, membership checks, tenant-scoped access, and security tests are implemented.
