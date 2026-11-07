@@ -26,6 +26,7 @@ function App() {
   const [loadingIncidents, setLoadingIncidents] = React.useState(false)
   const [loadingDetails, setLoadingDetails] = React.useState(false)
   const [organizationId, setOrganizationId] = React.useState<string | null>(null)
+  const [organizations, setOrganizations] = React.useState<Array<{ id: string; name: string; role: string }>>([])
 
   const loadSession = React.useCallback(async () => {
     try {
@@ -33,8 +34,9 @@ function App() {
       const payload = response.ok ? await response.json() : null
       setSession(payload)
       if (payload?.user) {
-        const organizations = await fetch('/api/organizations', { credentials: 'include' }).then(result => result.json())
-        setOrganizationId(organizations[0]?.id ?? null)
+        const memberships = await fetch('/api/organizations', { credentials: 'include' }).then(result => result.json())
+        setOrganizations(memberships)
+        setOrganizationId(memberships[0]?.id ?? null)
       }
     } finally {
       setAuthLoading(false)
@@ -46,6 +48,13 @@ function App() {
   if (authLoading) return <div className="auth-shell"><p>Carregando sessão...</p></div>
   if (!session) return <div className="auth-shell"><AuthPanel onAuthenticated={loadSession} /></div>
   if (!organizationId) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
+
+  const signOut = async () => {
+    await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
+    setSession(null)
+    setOrganizations([])
+    setOrganizationId(null)
+  }
 
   const loadIncidents = async () => {
     setLoadingIncidents(true)
@@ -91,9 +100,9 @@ function App() {
   return <div className="app">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">M</span><span>Mons<span>Ys</span></span></div>
-      <div className="workspace"><span className="workspace-dot" /> Acme Operations <span className="chevron">⌄</span></div>
+      <label className="workspace-selector"><span className="workspace-dot" /><select aria-label="Selecionar organização" value={organizationId} onChange={event => setOrganizationId(event.target.value)}>{organizations.map(organization => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select><span className="chevron">⌄</span></label>
       <nav><p className="nav-label">MONITORAMENTO</p><a className="active">Overview <b>3</b></a><a>Dispositivos <span>24</span></a><a>Eventos</a><a>Regras</a><p className="nav-label">OPERAÇÕES</p><a>Incidentes <b>2</b></a><a>Runbooks</a><a>Timeline</a></nav>
-      <div className="sidebar-bottom"><div className="status"><i /> Todos os sistemas operacionais</div><div className="profile"><div className="avatar">TC</div><div><strong>Thiago Canali</strong><small>Administrador</small></div><span>···</span></div></div>
+      <div className="sidebar-bottom"><div className="status"><i /> Todos os sistemas operacionais</div><div className="profile"><div className="avatar">{session.user.name.slice(0, 2).toUpperCase()}</div><div><strong>{session.user.name}</strong><small>{organizations.find(organization => organization.id === organizationId)?.role ?? 'Membro'}</small></div><button className="profile-action" onClick={signOut} aria-label="Sair">Sair</button></div></div>
     </aside>
     <main>
       <header><div><p className="eyebrow">MONITORAMENTO / OVERVIEW</p><h1>Control room</h1><p className="subtitle">Transforme sinais técnicos em ações operacionais.</p></div><div className="header-actions"><button className="icon-button">⌘ K</button><button className="ghost" onClick={loadIncidents}>{loadingIncidents ? 'Carregando...' : 'Atualizar incidentes'}</button><button className="primary" onClick={runWorkflow}>Executar fluxo</button></div></header>

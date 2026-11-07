@@ -2,6 +2,10 @@ import { authPool, getSession } from './auth.js'
 
 export type OrganizationRole = 'ADMIN' | 'OPERATOR' | 'VIEWER'
 
+export function roleAllows(role: OrganizationRole | undefined, requiredRoles?: OrganizationRole[]) {
+  return Boolean(role && (!requiredRoles || requiredRoles.includes(role)))
+}
+
 export async function requireOrganizationAccess(request: Request, organizationId: string, roles?: OrganizationRole[]) {
   const session = await getSession(request)
   if (!session?.user) return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) as Response }
@@ -11,7 +15,7 @@ export async function requireOrganizationAccess(request: Request, organizationId
     [organizationId, session.user.id],
   )
   const role = result.rows[0]?.role as OrganizationRole | undefined
-  if (!role || (roles && !roles.includes(role))) {
+  if (!roleAllows(role, roles)) {
     return { response: Response.json({ error: 'Forbidden' }, { status: 403 }) as Response }
   }
 
