@@ -1,5 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
+import { AuthPanel } from './AuthPanel.js'
+import { OrganizationSetup } from './OrganizationSetup.js'
 import type { MetricSample, Rule } from './domain/rules.js'
 import type { Incident } from './domain/operations.js'
 import './styles.css'
@@ -15,16 +17,40 @@ const events = [
 const demoRule: Rule = { id: 'rule-cpu-90', name: 'CPU acima de 90% por 10 minutos', metric: 'cpu', operator: '>', threshold: 90, duration: 600, severity: 'CRITICAL', runbookId: 'RB-CPU-001' }
 
 function App() {
+  const [session, setSession] = React.useState<{ user: { name: string; email: string } } | null>(null)
+  const [authLoading, setAuthLoading] = React.useState(true)
   const [active, setActive] = React.useState(0)
   const [workflowState, setWorkflowState] = React.useState({ incident: 'INC-2048', result: 'Aguardando evidência', status: 'OPEN' })
   const [incidents, setIncidents] = React.useState<Incident[]>([])
   const [selectedIncident, setSelectedIncident] = React.useState<any>(null)
   const [loadingIncidents, setLoadingIncidents] = React.useState(false)
   const [loadingDetails, setLoadingDetails] = React.useState(false)
+  const [organizationId, setOrganizationId] = React.useState<string | null>(null)
+
+  const loadSession = React.useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/get-session', { credentials: 'include' })
+      const payload = response.ok ? await response.json() : null
+      setSession(payload)
+      if (payload?.user) {
+        const organizations = await fetch('/api/organizations', { credentials: 'include' }).then(result => result.json())
+        setOrganizationId(organizations[0]?.id ?? null)
+      }
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => { void loadSession() }, [loadSession])
+
+  if (authLoading) return <div className="auth-shell"><p>Carregando sessão...</p></div>
+  if (!session) return <div className="auth-shell"><AuthPanel onAuthenticated={loadSession} /></div>
+  if (!organizationId) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
+
   const loadIncidents = async () => {
     setLoadingIncidents(true)
     try {
-      const response = await fetch('/api/operations?organizationId=acme')
+      const response = await fetch(`/api/operations?organizationId=${encodeURIComponent(organizationId ?? '')}`)
       if (!response.ok) throw new Error('Não foi possível carregar incidentes')
       setIncidents(await response.json() as Incident[])
     } finally {
@@ -34,7 +60,7 @@ function App() {
   const loadIncidentDetails = async (incidentId: string) => {
     setLoadingDetails(true)
     try {
-      const response = await fetch(`/api/operations?organizationId=acme&incidentId=${encodeURIComponent(incidentId)}`)
+      const response = await fetch(`/api/operations?organizationId=${encodeURIComponent(organizationId ?? '')}&incidentId=${encodeURIComponent(incidentId)}`)
       if (!response.ok) throw new Error('Não foi possível carregar o incidente')
       setSelectedIncident(await response.json())
     } finally {
@@ -47,7 +73,7 @@ function App() {
       const response = await fetch('/api/operations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rule: demoRule, organizationId: 'acme', deviceId: demoAgent.deviceId, sample }),
+        body: JSON.stringify({ rule: demoRule, organizationId, deviceId: demoAgent.deviceId, sample }),
       })
       if (!response.ok) throw new Error('API indisponível')
       const payload = await response.json() as { incident: Incident }
