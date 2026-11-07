@@ -1,6 +1,7 @@
 import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
+import { requireOrganizationAccess } from '../src/server/tenant-auth.js'
 import {
   getIncidentDetails,
   listAuditLogs,
@@ -28,6 +29,8 @@ export default async function handler(request: Request): Promise<Response> {
       const offset = Number.isInteger(requestedOffset) ? Math.max(requestedOffset, 0) : 0
 
       if (!organizationId) return Response.json({ error: 'organizationId is required' }, { status: 400 })
+      const access = await requireOrganizationAccess(request, organizationId)
+      if ('response' in access) return access.response
       if (searchParams.get('audit') === 'true') {
         return Response.json(await listAuditLogs(organizationId, resourceId, limit, offset))
       }
@@ -76,6 +79,9 @@ export default async function handler(request: Request): Promise<Response> {
           { status: 400 },
         )
       }
+
+      const access = await requireOrganizationAccess(request, normalizedOrganizationId, ['ADMIN', 'OPERATOR'])
+      if ('response' in access) return access.response
 
       const recordedAt = new Date(typeof timestamp === 'string' || typeof timestamp === 'number' ? timestamp : Date.now())
       if (Number.isNaN(recordedAt.getTime())) {
@@ -168,6 +174,9 @@ export default async function handler(request: Request): Promise<Response> {
         { status: 400 },
       )
     }
+
+    const access = await requireOrganizationAccess(request, normalizedOrganizationId, ['ADMIN', 'OPERATOR'])
+    if ('response' in access) return access.response
 
     const samplePayload = sample as { metric: string; value: number; timestamp?: string | number | Date }
     const sampleTimestamp = new Date(samplePayload.timestamp ?? Date.now())
