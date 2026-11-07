@@ -1,6 +1,7 @@
 import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
+import { authenticateAgent } from '../src/server/agent-auth.js'
 import { requireOrganizationAccess } from '../src/server/tenant-auth.js'
 import {
   getIncidentDetails,
@@ -130,6 +131,13 @@ export default async function handler(request: Request): Promise<Response> {
     }
 
     if (payload.type === 'heartbeat') {
+      const organizationId = typeof payload.organizationId === 'string' ? payload.organizationId.trim() : ''
+      const deviceId = typeof payload.deviceId === 'string' ? payload.deviceId.trim() : ''
+      if (!organizationId || !deviceId) return Response.json({ error: 'organizationId and deviceId are required' }, { status: 400 })
+      if (!(await authenticateAgent(request, organizationId, deviceId))) {
+        return Response.json({ error: 'Invalid agent credential' }, { status: 401 })
+      }
+
       const heartbeat = validateHeartbeat({
         deviceId: String(payload.deviceId ?? ''),
         hostname: String(payload.hostname ?? ''),

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { requireOrganizationAccess } = vi.hoisted(() => ({ requireOrganizationAccess: vi.fn() }))
+const { requireOrganizationAccess, authenticateAgent } = vi.hoisted(() => ({ requireOrganizationAccess: vi.fn(), authenticateAgent: vi.fn() }))
+
+vi.mock('../src/server/agent-auth.js', () => ({ authenticateAgent }))
 
 vi.mock('../src/server/tenant-auth.js', () => ({
   requireOrganizationAccess,
@@ -21,6 +23,7 @@ import handler from './operations.js'
 describe('operations API authorization boundary', () => {
   beforeEach(() => {
     requireOrganizationAccess.mockReset()
+    authenticateAgent.mockReset()
   })
 
   it('returns 401 before reading operation data without a session', async () => {
@@ -43,6 +46,18 @@ describe('operations API authorization boundary', () => {
 
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ error: 'Forbidden' })
+  })
+
+  it('rejects a heartbeat without a valid agent credential', async () => {
+    authenticateAgent.mockResolvedValue(false)
+
+    const response = await handler(new Request('http://localhost/api/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'heartbeat', organizationId: 'org-a', deviceId: 'device-a', hostname: 'host-a', agentVersion: '1.0.0', metrics: { cpu: 1, memory: 2, disk: 3 } }),
+    }))
+
+    expect(response.status).toBe(401)
   })
 
   it('accepts a member and preserves the organization scope on reads', async () => {
