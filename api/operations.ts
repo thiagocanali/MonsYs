@@ -134,8 +134,14 @@ export default async function handler(request: Request): Promise<Response> {
       const organizationId = typeof payload.organizationId === 'string' ? payload.organizationId.trim() : ''
       const deviceId = typeof payload.deviceId === 'string' ? payload.deviceId.trim() : ''
       if (!organizationId || !deviceId) return Response.json({ error: 'organizationId and deviceId are required' }, { status: 400 })
-      if (!(await authenticateAgent(request, organizationId, deviceId))) {
+      const authenticatedAgent = await authenticateAgent(request, organizationId, deviceId)
+      if (!authenticatedAgent) {
         return Response.json({ error: 'Invalid agent credential' }, { status: 401 })
+      }
+      // The credential is authoritative. Reject payload identity mismatches and persist
+      // the database agent ID returned by credential validation.
+      if (authenticatedAgent.organizationId !== organizationId || authenticatedAgent.deviceId !== deviceId) {
+        return Response.json({ error: 'Agent identity does not match credential' }, { status: 401 })
       }
 
       const heartbeat = validateHeartbeat({
@@ -150,8 +156,8 @@ export default async function handler(request: Request): Promise<Response> {
         metrics: payload.metrics as { cpu: number; memory: number; disk: number },
       })
       const agent = {
-        id: `agent-${heartbeat.deviceId}`,
-        deviceId: heartbeat.deviceId,
+        id: authenticatedAgent.agentId,
+        deviceId: authenticatedAgent.deviceId,
         version: heartbeat.agentVersion,
         connected: true as const,
       }

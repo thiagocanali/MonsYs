@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { issueAgentToken } from '../src/server/agent-auth.js'
 import { authPool } from '../src/server/auth.js'
 import { requireOrganizationAccess } from '../src/server/tenant-auth.js'
@@ -8,20 +9,24 @@ export default async function handler(request: Request): Promise<Response> {
     const body = await request.json() as { organizationId?: unknown; deviceId?: unknown }
     const organizationId = typeof body.organizationId === 'string' ? body.organizationId.trim() : ''
     const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : ''
-    if (!organizationId || !deviceId) return Response.json({ error: 'organizationId and deviceId are required' }, { status: 400 })
+    if (!organizationId || !deviceId || organizationId.length > 200 || deviceId.length > 200) {
+      return Response.json({ error: 'organizationId and deviceId are required and must contain at most 200 characters' }, { status: 400 })
+    }
 
     const access = await requireOrganizationAccess(request, organizationId, ['ADMIN'])
     if ('response' in access) return access.response
 
+    // Agent identity is globally unique; device IDs are only unique within an organization.
+    // Never derive the database primary key from a caller-controlled device ID.
+    const agentId = randomUUID()
     const agent = await authPool.query(
       `INSERT INTO agents (id, device_id, version, connected, hostname, last_seen_at)
        VALUES ($1, $2, 'pending', false, 'pending', NOW())
-       ON CONFLICT (id) DO UPDATE SET device_id = EXCLUDED.device_id
        RETURNING id`,
-      [`agent-${deviceId}`, deviceId],
+      [agentId, deviceId],
     )
     const token = await issueAgentToken(agent.rows[0].id, organizationId)
-    return Response.json({ agentId: agent.rows[0].id, organizationId, token }, { status: 201 })
+    return Response.json({ agentId: agent.rows[0].id, organizationId, deviceId, token }, { status: 201 })
   } catch {
     return Response.json({ error: 'Unable to provision agent credential' }, { status: 500 })
   }

@@ -19,10 +19,10 @@ This document does not enable authentication, change the database, or claim prod
 
 ### Human users
 
-1. The browser signs in with Supabase Auth.
-2. The browser sends the Supabase access token as a Bearer token to the MonsYs API.
-3. The API validates the token with Supabase Auth using the server-side Supabase URL and publishable/anon key. Never trust decoded JWT claims without signature and issuer validation.
-4. The API obtains the authenticated user ID from the verified identity.
+1. The browser signs in through Better Auth email/password endpoints.
+2. Better Auth persists users, sessions, accounts, and verification records in PostgreSQL through the server-side adapter.
+3. The browser sends the Better Auth session cookie on same-origin API requests; the API resolves it with `auth.api.getSession` through the shared `getSession` helper.
+4. The API obtains the authenticated user ID from the verified session.
 5. The API resolves organization membership from `organization_members` on the server.
 6. The organization context and role are derived server-side. A client-provided `organizationId` must never grant access.
 7. Every operation checks the minimum required role.
@@ -96,19 +96,34 @@ RLS is not a substitute for API authorization. The API must reject unauthenticat
 
 ## Deployment configuration (server only)
 
-Expected configuration will be documented when implementation begins:
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY` (or current publishable key name supported by the project)
-- `DATABASE_URL`
+Current server-side configuration used by the code:
+- `DATABASE_URL` — PostgreSQL connection for Better Auth and application data.
+- `BETTER_AUTH_URL` — canonical public application URL; deployment URL fallbacks are configured in `src/server/auth.ts`.
+- Vercel origin variables are used to build the Better Auth trusted-origin allowlist.
+
+Supabase Auth URL/anon-key configuration is not used by the current implementation.
 
 No Supabase service-role key should be placed in the browser. No secret should be committed to Git or pasted into chat.
 
 ## Database and deployment safety
 
-The Supabase project `uffirxavkewwetniuctc` has not been inspected through a database connection in this review. Its schema and data state are unknown.
+The PostgreSQL database configured by `DATABASE_URL` has not been inspected through a live database connection. Its schema and data state are unknown. The current `main` branch does not contain a database migration directory, although the runtime expects Better Auth tables plus application tables such as `organizations`, `organization_members`, `agents`, and `agent_credentials`.
 
-Do not run migrations against it until its current schema and data have been checked. The existing initial migration is explicitly intended for a new, empty project. The demo tenant `acme` is development scaffolding, not a production onboarding mechanism.
+Do not run schema changes until the live database has been inspected and a reproducible, reviewed migration baseline has been added. Do not assume that a previous Supabase migration still exists on `main`. The demo tenant `acme` is not a production onboarding mechanism.
 
 ## Validation status
 
 This is a source-based architecture review. No runtime build, tests, live Supabase inspection, SQL migration, or production security validation has been performed as part of this document.
+
+
+## Implementation update — agent identity hardening
+
+The current agent provisioning and heartbeat flow must preserve the identity resolved from the credential:
+
+- Provision each agent with a server-generated UUID. A caller-controlled `deviceId` is not a database primary key.
+- Device IDs are identifiers within an organization and must not be used as globally unique agent IDs.
+- Credential validation returns the authenticated agent ID, organization ID, and device ID.
+- Heartbeat payload identity must match the credential-bound organization/device identity.
+- Persist the heartbeat using the authenticated agent database ID, never by reconstructing an ID from the payload.
+
+The corresponding change is proposed in PR #15. It does not modify the live database or add a schema migration.
