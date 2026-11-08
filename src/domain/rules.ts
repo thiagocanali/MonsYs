@@ -69,7 +69,7 @@ export class RuleEngine {
       return { matched: false, reason: 'Metric does not match rule' }
     }
     if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) {
-      this.activeSince.delete(scopeKey)
+      await this.stateStore.clear(scopeKey)
       return { matched: false, reason: 'Condition is not satisfied' }
     }
     const previousState = await this.stateStore.get(scopeKey)
