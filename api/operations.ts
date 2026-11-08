@@ -1,4 +1,4 @@
-import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
+import { createEvent, RuleEngine, validateRule, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
 import { authenticateAgent } from '../src/server/agent-auth.js'
@@ -91,6 +91,10 @@ export default async function handler(request: Request): Promise<Response> {
 
       const sampleId = typeof id === 'string' && id.trim() ? id.trim() : crypto.randomUUID()
       if (sampleId.length > 200) return Response.json({ error: 'id must contain at most 200 characters' }, { status: 400 })
+
+      // Validate an optional rule before writing telemetry. Otherwise a malformed
+      // rule could return an error after the sample had already been persisted.
+      if (payload.rule !== undefined) validateRule(payload.rule as Rule)
 
       const sample = {
         id: sampleId,

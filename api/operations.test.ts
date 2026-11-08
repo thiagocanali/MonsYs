@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { requireOrganizationAccess, authenticateAgent, saveHeartbeat } = vi.hoisted(() => ({ requireOrganizationAccess: vi.fn(), authenticateAgent: vi.fn(), saveHeartbeat: vi.fn().mockResolvedValue([]) }))
+const { requireOrganizationAccess, authenticateAgent, saveHeartbeat, saveTelemetrySample } = vi.hoisted(() => ({ requireOrganizationAccess: vi.fn(), authenticateAgent: vi.fn(), saveHeartbeat: vi.fn().mockResolvedValue([]), saveTelemetrySample: vi.fn().mockResolvedValue(true) }))
 
 vi.mock('../src/server/agent-auth.js', () => ({ authenticateAgent }))
 vi.mock('../src/server/heartbeat-repository.js', () => ({ saveHeartbeat }))
@@ -15,7 +15,7 @@ vi.mock('../src/server/operations-repository.js', () => ({
   listIncidents: vi.fn().mockResolvedValue([]),
   listTelemetrySamples: vi.fn(),
   saveEventIncident: vi.fn(),
-  saveTelemetrySample: vi.fn(),
+  saveTelemetrySample,
 }))
 
 import handler from './operations.js'
@@ -25,6 +25,7 @@ describe('operations API authorization boundary', () => {
     requireOrganizationAccess.mockReset()
     authenticateAgent.mockReset()
     saveHeartbeat.mockReset().mockResolvedValue([])
+    saveTelemetrySample.mockReset().mockResolvedValue(true)
   })
 
   it('returns 401 before reading operation data without a session', async () => {
@@ -91,6 +92,26 @@ describe('operations API authorization boundary', () => {
       'host-a',
       expect.objectContaining({ organizationId: 'org-a', metrics: { cpu: 1, memory: 2, disk: 3 } }),
     )
+  })
+
+  it('rejects a malformed rule before persisting its telemetry sample', async () => {
+    requireOrganizationAccess.mockResolvedValue({ session: { user: { id: 'user-a' } }, role: 'OPERATOR' })
+
+    const response = await handler(new Request('http://localhost/api/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'telemetry',
+        organizationId: 'org-a',
+        deviceId: 'device-a',
+        metric: 'cpu_usage',
+        value: 95,
+        rule: { id: '', name: 'CPU alta', metric: 'cpu_usage', operator: '>', threshold: 90, duration: 60, severity: 'WARNING' },
+      }),
+    }))
+
+    expect(response.status).toBe(422)
+    expect(saveTelemetrySample).not.toHaveBeenCalled()
   })
 
   it('accepts a member and preserves the organization scope on reads', async () => {
