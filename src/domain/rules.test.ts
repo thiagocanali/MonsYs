@@ -57,6 +57,28 @@ describe('Rule Engine', () => {
     expect((await engine.evaluate(scopedRule, { metric: 'cpu_usage', value: 95, timestamp: new Date(1_060_000) }, new Date(1_060_000), 'org-1:device-1:r-1')).matched).toBe(true)
   })
 
+  it('dispara apenas uma vez enquanto a condição permanece satisfeita', async () => {
+    const engine = new RuleEngine()
+    const scope = 'org-1:device-1:r-1'
+
+    expect((await engine.evaluate(baseRule, sample(95), sample(95).timestamp, scope)).matched).toBe(false)
+    expect((await engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, scope)).matched).toBe(true)
+    const repeated = await engine.evaluate(baseRule, sample(95, 90), sample(95, 90).timestamp, scope)
+    expect(repeated.matched).toBe(false)
+    expect(repeated.reason).toContain('already triggered')
+  })
+
+  it('permite novo alerta depois que a condição é normalizada', async () => {
+    const engine = new RuleEngine()
+    const scope = 'org-1:device-1:r-1'
+
+    await engine.evaluate(baseRule, sample(95), sample(95).timestamp, scope)
+    expect((await engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, scope)).matched).toBe(true)
+    await engine.evaluate(baseRule, sample(80, 90), sample(80, 90).timestamp, scope)
+    expect((await engine.evaluate(baseRule, sample(95, 120), sample(95, 120).timestamp, scope)).matched).toBe(false)
+    expect((await engine.evaluate(baseRule, sample(95, 180), sample(95, 180).timestamp, scope)).matched).toBe(true)
+  })
+
   it('reseta duration quando a condição deixa de ser satisfeita', async () => {
     const engine = new RuleEngine()
     await engine.evaluate(baseRule, sample(95))
