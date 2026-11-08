@@ -15,7 +15,7 @@ export interface HeartbeatAgent {
  * Persist agent liveness and its three standard utilization samples atomically.
  * A failed telemetry insert must not leave the heartbeat partially recorded.
  */
-export async function saveHeartbeat(agent: HeartbeatAgent, hostname: string, heartbeat: AgentHeartbeat) {
+export async function saveHeartbeat(agent: HeartbeatAgent, hostname: string, heartbeat: AgentHeartbeat & { organizationId: string }) {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
