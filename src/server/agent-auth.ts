@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import type { PoolClient } from 'pg'
 import { authPool } from './auth.js'
 
 function hashToken(token: string) {
@@ -11,9 +12,10 @@ export interface AuthenticatedAgent {
   deviceId: string
 }
 
-export async function issueAgentToken(agentId: string, organizationId: string) {
+export async function issueAgentToken(agentId: string, organizationId: string, client?: PoolClient) {
   const token = `monsys_${randomBytes(32).toString('base64url')}`
-  await authPool.query(
+  const query = client ? client.query.bind(client) : authPool.query.bind(authPool)
+  await query(
     'INSERT INTO agent_credentials (id, agent_id, organization_id, token_hash) VALUES ($1,$2,$3,$4)',
     [crypto.randomUUID(), agentId, organizationId, hashToken(token)],
   )
