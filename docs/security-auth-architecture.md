@@ -1,129 +1,93 @@
-# MonsYs — Authentication and tenant security architecture
+# MonsYs — Authentication, tenant security and database readiness
 
-## Status
+## Current implementation status
 
-Architecture proposal based on the repository source reviewed on 2026-11-04.
-This document does not enable authentication, change the database, or claim production readiness.
+Reviewed against `main` after PRs #15 and #16 (2026-11-08).
 
-## Current security gaps
+Implemented in application code:
+- Better Auth email/password authentication backed by PostgreSQL through `DATABASE_URL`.
+- Session resolution through the shared `getSession` helper.
+- Organization membership and role checks through `requireOrganizationAccess`.
+- Organization creation and ADMIN membership assignment in one transaction.
+- Agent credentials are high-entropy tokens; only SHA-256 hashes are persisted.
+- Agent credentials are bound to organization and device identity; heartbeat persistence uses the authenticated agent ID.
+- Agent registration and credential insertion are atomic.
+- CI runs backend typecheck, Vitest, and Vite production build.
 
-- `GET /api/operations` accepts a caller-supplied `organizationId`.
-- `POST /api/operations` accepts caller-supplied organization IDs for telemetry and incident creation.
-- The heartbeat flow accepts device identity and metrics without authenticating the agent.
-- The frontend has no login/session flow and currently uses the demo tenant `acme`.
-- `agents` are not organization-scoped in the initial schema.
-- Related records such as actions, action results, and timeline entries are loaded by incident ID; their access must be anchored to an authorized incident and tenant.
-- The health endpoint is public; it should expose only non-sensitive liveness/readiness information.
+Not yet proven or production-ready:
+- The live PostgreSQL schema has not been inspected.
+- Better Auth schema has not been generated/applied against the actual database in this workflow.
+- No reproducible current migration baseline exists on `main`.
+- Cross-tenant database constraints and RLS are not implemented/verified.
+- The Vercel deployment preview may be rate-limited independently of CI.
+- The Windows Go agent and end-to-end heartbeat-to-event flow are not implemented.
 
-## Recommended identity model
+## Human identity and authorization
 
-### Human users
+1. The browser authenticates using Better Auth email/password endpoints.
+2. Better Auth persists users, sessions, accounts, and verification records in PostgreSQL.
+3. APIs resolve the session from request headers using `getSession`.
+4. The API resolves organization membership and role server-side.
+5. The client-supplied `organizationId` is a resource selector only; it does not grant access.
+6. Read operations require membership. Operational writes require ADMIN or OPERATOR; agent provisioning requires ADMIN.
 
-1. The browser signs in through Better Auth email/password endpoints.
-2. Better Auth persists users, sessions, accounts, and verification records in PostgreSQL through the server-side adapter.
-3. The browser sends the Better Auth session cookie on same-origin API requests; the API resolves it with `auth.api.getSession` through the shared `getSession` helper.
-4. The API obtains the authenticated user ID from the verified session.
-5. The API resolves organization membership from `organization_members` on the server.
-6. The organization context and role are derived server-side. A client-provided `organizationId` must never grant access.
-7. Every operation checks the minimum required role.
+Role policy:
+- ADMIN: organization administration and agent provisioning.
+- OPERATOR: operational writes.
+- VIEWER: read-only access.
 
-Suggested permissions:
-- ADMIN: manage organization, membership, users, rules, runbooks, and operational resources.
-- OPERATOR: read operational data, acknowledge/resolve incidents, and request permitted actions.
-- VIEWER: read-only operational access.
+Keep policy checks centralized and covered by tests. The current role helper tests policy decisions; API-level integration tests against PostgreSQL are still needed.
 
-The exact permission matrix should be implemented as centralized policy functions and covered by tests, rather than scattered role checks.
+## Agent identity
 
-### Agents
+- Human sessions and agent credentials are separate.
+- Agent tokens are generated with high entropy and only token hashes are stored.
+- Credential records bind `agent_id`, `organization_id`, and device identity through the associated agent row.
+- Authentication validates token hash, tenant, device, revocation and expiry.
+- Heartbeats must not be able to override the credential-bound identity.
+- Provisioning inserts the agent and credential in one transaction; a credential failure rolls back the agent insert.
 
-Agents must not reuse human access tokens.
+Existing agent rows and credentials in any deployed database still need a reviewed migration/rotation plan. Do not assume the historical deterministic agent IDs are safe to retain.
 
-1. Provision each agent against one organization and device.
-2. Issue a high-entropy agent credential once; store only a cryptographic hash in PostgreSQL.
-3. Authenticate heartbeat and telemetry requests with that credential.
-4. Resolve the agent, device, and organization from the credential record on the server.
-5. Reject payloads that attempt to override the credential's device or organization.
-6. Support credential rotation and revocation; never log credentials.
+## Tenant isolation
 
-The schema must add an organization-scoped agent identity and credential storage before enabling this flow. Existing agent rows need a reviewed migration strategy.
+The API currently checks membership before listing incidents, telemetry samples, audit records, or incident details. Nested incident data is loaded only after the incident itself is found under the requested organization.
 
-## Tenant isolation and database access
+Remaining hardening:
+- Add organization-aware composite foreign keys where practical.
+- Ensure every operational table has an unambiguous tenant relationship.
+- Scope runbooks, actions, results, timeline entries, and audit logs consistently.
+- Add API integration tests for cross-tenant reads and writes, VIEWER write denial, and foreign-tenant nested resources.
+- Evaluate RLS only after identifying the actual database role used by the application. RLS must be tested using that role and connection mode; API authorization remains mandatory.
 
-- Every tenant-owned resource must have a trustworthy organization relationship.
-- Reads and writes must include tenant scope, including joins and nested resources.
-- Actions, action results, and timeline entries must be reached through an incident that belongs to the authorized organization.
-- Agents and agent credentials must be scoped to an organization.
-- Audit records must use the authenticated actor or authenticated agent identity, not a caller-supplied actor ID.
-- Add database constraints that prevent cross-tenant relationships where practical (for example composite keys/foreign keys involving `organization_id`).
+## Database status and migration safety
 
-### RLS recommendation
+The application currently issues SQL against these tables:
+- Better Auth: `user`, `session`, `account`, `verification`.
+- Organization: `organizations`, `organization_members`.
+- Operations: `telemetry_samples`, `events`, `incidents`, `timeline_entries`, `runbooks`, `actions`, `agents`, `agent_credentials`, `action_results`, `audit_logs`.
 
-Use PostgreSQL Row Level Security as defense in depth, but do not assume it protects data automatically.
+The old migration in PR #7 is not a valid current baseline:
+- It references Supabase's `auth.users`, while the current application uses Better Auth.
+- It predates `agent_credentials` and the current credential-bound identity model.
+- Its organization and agent relationships do not fully express current tenant boundaries.
+- It was intended for a new, empty Supabase project and must not be replayed blindly.
 
-Before enabling policies:
-- Confirm which PostgreSQL role the deployed `DATABASE_URL` uses.
-- Do not connect the application with a table-owner or privileged role that bypasses RLS unless the design explicitly accounts for that bypass.
-- Define a transaction-scoped tenant context only after API authentication and membership checks.
-- Ensure every database transaction sets and clears that context safely (for example with `SET LOCAL` inside a transaction).
-- Test policies using the same database role and connection mode used by the deployed application.
+The current live database schema and data state are unknown. No live database inspection or SQL migration has been performed. Before creating or applying a migration:
+1. Generate the Better Auth schema from the exact installed Better Auth version and current configuration.
+2. Inspect the live database schema and migration history using a secure database connection; never paste credentials into chat or Git.
+3. Compare the live schema with the generated auth schema and application SQL contract.
+4. Design additive migrations with explicit handling for existing rows and legacy agent credentials.
+5. Test migrations against a disposable PostgreSQL database before any production application.
 
-RLS is not a substitute for API authorization. The API must reject unauthenticated and unauthorized requests before accessing tenant data.
+## Server environment
 
-## API implementation sequence
+- `DATABASE_URL`: server-only PostgreSQL connection.
+- `BETTER_AUTH_URL`: canonical public application URL.
+- Vercel origin variables are used for trusted-origin configuration.
 
-1. Add a shared server-side authentication module for human Bearer tokens.
-2. Add centralized membership and role resolution.
-3. Add protected route helpers and remove caller authority from `organizationId`.
-4. Add the browser login/session flow and authenticated API client.
-5. Add agent credential provisioning, hashing, validation, rotation, and revocation.
-6. Scope all repository methods and relationships by organization.
-7. Add RLS policies and verify the actual database role/connection behavior.
-8. Add integration tests and CI before production deployment.
+Never expose database credentials or service-role keys in browser variables, source control, logs, or chat.
 
-## Required security tests
+## Validation
 
-- No token: protected human endpoint returns 401.
-- Invalid, expired, or wrong-project token: 401.
-- Authenticated user without membership: 403.
-- VIEWER attempts a write: 403.
-- OPERATOR attempts an ADMIN-only operation: 403.
-- User from organization A requests data belonging to organization B: no data disclosure or mutation.
-- Changing `organizationId` in query/body does not change the authenticated tenant.
-- Agent without credential, revoked credential, or invalid credential: 401.
-- Agent credential for device A cannot submit data for device B or another organization.
-- Nested actions/results/timeline cannot be accessed through a foreign-tenant incident.
-- Health endpoint returns no secrets, connection strings, or sensitive infrastructure details.
-
-## Deployment configuration (server only)
-
-Current server-side configuration used by the code:
-- `DATABASE_URL` — PostgreSQL connection for Better Auth and application data.
-- `BETTER_AUTH_URL` — canonical public application URL; deployment URL fallbacks are configured in `src/server/auth.ts`.
-- Vercel origin variables are used to build the Better Auth trusted-origin allowlist.
-
-Supabase Auth URL/anon-key configuration is not used by the current implementation.
-
-No Supabase service-role key should be placed in the browser. No secret should be committed to Git or pasted into chat.
-
-## Database and deployment safety
-
-The PostgreSQL database configured by `DATABASE_URL` has not been inspected through a live database connection. Its schema and data state are unknown. The current `main` branch does not contain a database migration directory, although the runtime expects Better Auth tables plus application tables such as `organizations`, `organization_members`, `agents`, and `agent_credentials`.
-
-Do not run schema changes until the live database has been inspected and a reproducible, reviewed migration baseline has been added. Do not assume that a previous Supabase migration still exists on `main`. The demo tenant `acme` is not a production onboarding mechanism.
-
-## Validation status
-
-This is a source-based architecture review. No runtime build, tests, live Supabase inspection, SQL migration, or production security validation has been performed as part of this document.
-
-
-## Implementation update — agent identity hardening
-
-The current agent provisioning and heartbeat flow must preserve the identity resolved from the credential:
-
-- Provision each agent with a server-generated UUID. A caller-controlled `deviceId` is not a database primary key.
-- Device IDs are identifiers within an organization and must not be used as globally unique agent IDs.
-- Credential validation returns the authenticated agent ID, organization ID, and device ID.
-- Heartbeat payload identity must match the credential-bound organization/device identity.
-- Persist the heartbeat using the authenticated agent database ID, never by reconstructing an ID from the payload.
-
-The corresponding change is proposed in PR #15. It does not modify the live database or add a schema migration.
+CI currently validates TypeScript backend sources, unit tests, and production build. This is not equivalent to live database validation, migration testing, RLS verification, or production deployment verification.
