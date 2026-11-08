@@ -17,6 +17,29 @@ describe('Rule Engine', () => {
     expect(engine.evaluate(baseRule, { ...sample(95), metric: 'memory_usage' }).matched).toBe(false)
   })
 
+  it('reseta a janela quando chega uma amostra de outra métrica no mesmo escopo', () => {
+    const engine = new RuleEngine()
+    engine.evaluate(baseRule, sample(95), sample(95).timestamp, 'org:device:rule')
+    const wrongMetric = { ...sample(95, 30), metric: 'memory_usage' }
+    expect(engine.evaluate(baseRule, wrongMetric, wrongMetric.timestamp, 'org:device:rule').matched).toBe(false)
+    expect(engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, 'org:device:rule').matched).toBe(false)
+  })
+
+  it('reinicia a janela diante de amostra fora de ordem', () => {
+    const engine = new RuleEngine()
+    engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, 'org:device:rule')
+    const older = sample(95, 30)
+    const evaluation = engine.evaluate(baseRule, older, older.timestamp, 'org:device:rule')
+    expect(evaluation.matched).toBe(false)
+    expect(evaluation.activeSince).toEqual(older.timestamp)
+  })
+
+  it('rejeita amostras com valor não finito ou timestamp inválido', () => {
+    const engine = new RuleEngine()
+    expect(() => engine.evaluate(baseRule, { ...sample(Number.NaN) })).toThrow('finite number')
+    expect(() => engine.evaluate(baseRule, { ...sample(95), timestamp: new Date(Number.NaN) })).toThrow('valid date')
+  })
+
   it('respeita duration antes de disparar', () => {
     const engine = new RuleEngine()
     expect(engine.evaluate(baseRule, sample(95)).matched).toBe(false)
