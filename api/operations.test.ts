@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { requireOrganizationAccess, authenticateAgent } = vi.hoisted(() => ({ requireOrganizationAccess: vi.fn(), authenticateAgent: vi.fn() }))
+const { requireOrganizationAccess, authenticateAgent, saveHeartbeat } = vi.hoisted(() => ({ requireOrganizationAccess: vi.fn(), authenticateAgent: vi.fn(), saveHeartbeat: vi.fn().mockResolvedValue([]) }))
 
 vi.mock('../src/server/agent-auth.js', () => ({ authenticateAgent }))
+vi.mock('../src/server/heartbeat-repository.js', () => ({ saveHeartbeat }))
 
 vi.mock('../src/server/tenant-auth.js', () => ({
   requireOrganizationAccess,
@@ -13,7 +14,6 @@ vi.mock('../src/server/operations-repository.js', () => ({
   listAuditLogs: vi.fn(),
   listIncidents: vi.fn().mockResolvedValue([]),
   listTelemetrySamples: vi.fn(),
-  saveAgent: vi.fn(),
   saveEventIncident: vi.fn(),
   saveTelemetrySample: vi.fn(),
 }))
@@ -24,6 +24,7 @@ describe('operations API authorization boundary', () => {
   beforeEach(() => {
     requireOrganizationAccess.mockReset()
     authenticateAgent.mockReset()
+    saveHeartbeat.mockReset().mockResolvedValue([])
   })
 
   it('returns 401 before reading operation data without a session', async () => {
@@ -85,6 +86,11 @@ describe('operations API authorization boundary', () => {
     expect(response.status).toBe(200)
     const payload = await response.json()
     expect(payload.agent.id).toBe('agent-uuid')
+    expect(saveHeartbeat).toHaveBeenCalledWith(
+      { id: 'agent-uuid', deviceId: 'device-a', version: '1.0.0', connected: true },
+      'host-a',
+      expect.objectContaining({ organizationId: 'org-a', metrics: { cpu: 1, memory: 2, disk: 3 } }),
+    )
   })
 
   it('accepts a member and preserves the organization scope on reads', async () => {
