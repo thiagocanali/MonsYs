@@ -49,7 +49,7 @@ describe('operations API authorization boundary', () => {
   })
 
   it('rejects a heartbeat without a valid agent credential', async () => {
-    authenticateAgent.mockResolvedValue(false)
+    authenticateAgent.mockResolvedValue(null)
 
     const response = await handler(new Request('http://localhost/api/operations', {
       method: 'POST',
@@ -58,6 +58,33 @@ describe('operations API authorization boundary', () => {
     }))
 
     expect(response.status).toBe(401)
+  })
+
+
+  it('rejects a heartbeat when payload identity differs from the credential identity', async () => {
+    authenticateAgent.mockResolvedValue({ agentId: 'agent-uuid', organizationId: 'org-a', deviceId: 'device-a' })
+
+    const response = await handler(new Request('http://localhost/api/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-agent-token': 'monsys_test' },
+      body: JSON.stringify({ type: 'heartbeat', organizationId: 'org-a', deviceId: 'device-b', hostname: 'host-a', agentVersion: '1.0.0', metrics: { cpu: 1, memory: 2, disk: 3 } }),
+    }))
+
+    expect(response.status).toBe(401)
+  })
+
+  it('persists heartbeat using the database agent ID resolved from its credential', async () => {
+    authenticateAgent.mockResolvedValue({ agentId: 'agent-uuid', organizationId: 'org-a', deviceId: 'device-a' })
+
+    const response = await handler(new Request('http://localhost/api/operations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-agent-token': 'monsys_test' },
+      body: JSON.stringify({ type: 'heartbeat', organizationId: 'org-a', deviceId: 'device-a', hostname: 'host-a', agentVersion: '1.0.0', metrics: { cpu: 1, memory: 2, disk: 3 } }),
+    }))
+
+    expect(response.status).toBe(200)
+    const payload = await response.json()
+    expect(payload.agent.id).toBe('agent-uuid')
   })
 
   it('accepts a member and preserves the organization scope on reads', async () => {
