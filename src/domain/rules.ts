@@ -8,6 +8,7 @@ export interface RuleEvaluation { matched: boolean; activeSince?: Date; reason: 
 export interface Event { id: string; organizationId: string; deviceId: string; ruleId: string; severity: Severity; status: 'OPEN' | 'RESOLVED'; title: string; message: string; createdAt: Date; updatedAt: Date; resolvedAt?: Date }
 
 export function validateRule(rule: Rule): void {
+  if (!rule.id.trim()) throw new Error('Rule ID is required')
   if (!rule.name.trim() || !rule.metric.trim()) throw new Error('Rule name and metric are required')
   if (!OPERATORS.includes(rule.operator)) throw new Error(`Unsupported operator: ${rule.operator}`)
   if (!Number.isFinite(rule.threshold)) throw new Error('Threshold must be a finite number')
