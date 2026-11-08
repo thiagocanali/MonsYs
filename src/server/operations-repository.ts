@@ -76,22 +76,23 @@ export async function getIncidentDetails(organizationId: string, incidentId: str
   const incident = incidentResult.rows[0]
   if (!incident) return null
 
+  // Scope child records through the authorized incident to enforce tenant boundaries.
   const [actions, timeline, runbooks, results] = await Promise.all([
     pool.query(
-      'SELECT id, incident_id, runbook_step_id, type, requested_by, requires_approval, approved, approved_by, status FROM actions WHERE incident_id = $1 ORDER BY id',
-      [incidentId],
+      'SELECT a.id, a.incident_id, a.runbook_step_id, a.type, a.requested_by, a.requires_approval, a.approved, a.approved_by, a.status FROM actions a JOIN incidents i ON i.id = a.incident_id WHERE a.incident_id = $1 AND i.organization_id = $2 ORDER BY a.id',
+      [incidentId, organizationId],
     ),
     pool.query(
-      'SELECT id, incident_id, type, message, actor_id, created_at FROM timeline_entries WHERE incident_id = $1 ORDER BY created_at ASC',
-      [incidentId],
+      'SELECT t.id, t.incident_id, t.type, t.message, t.actor_id, t.created_at FROM timeline_entries t JOIN incidents i ON i.id = t.incident_id WHERE t.incident_id = $1 AND i.organization_id = $2 ORDER BY t.created_at ASC',
+      [incidentId, organizationId],
     ),
     pool.query(
-      'SELECT DISTINCT r.id, r.organization_id, r.name, r.steps FROM runbooks r JOIN actions a ON EXISTS (SELECT 1 FROM jsonb_array_elements(r.steps) AS step WHERE step->>\'id\' = a.runbook_step_id) WHERE a.incident_id = $1',
-      [incidentId],
+      'SELECT DISTINCT r.id, r.organization_id, r.name, r.steps FROM runbooks r JOIN actions a ON EXISTS (SELECT 1 FROM jsonb_array_elements(r.steps) AS step WHERE step->>\'id\' = a.runbook_step_id) JOIN incidents i ON i.id = a.incident_id WHERE a.incident_id = $1 AND i.organization_id = $2 AND r.organization_id = $2',
+      [incidentId, organizationId],
     ).catch(() => ({ rows: [] })),
     pool.query(
-      'SELECT ar.id, ar.action_id, ar.agent_id, ar.success, ar.output, ar.finished_at FROM action_results ar JOIN actions a ON a.id = ar.action_id WHERE a.incident_id = $1 ORDER BY ar.finished_at ASC',
-      [incidentId],
+      'SELECT ar.id, ar.action_id, ar.agent_id, ar.success, ar.output, ar.finished_at FROM action_results ar JOIN actions a ON a.id = ar.action_id JOIN incidents i ON i.id = a.incident_id WHERE a.incident_id = $1 AND i.organization_id = $2 ORDER BY ar.finished_at ASC',
+      [incidentId, organizationId],
     ),
   ])
 
