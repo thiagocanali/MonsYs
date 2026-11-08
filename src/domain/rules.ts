@@ -6,7 +6,7 @@ export interface Rule { id: string; name: string; metric: string; operator: Oper
 export interface MetricSample { metric: string; value: number; timestamp: Date }
 export interface RuleEvaluation { matched: boolean; activeSince?: Date; reason: string }
 
-export interface RuleEvaluationState { activeSince?: Date }
+export interface RuleEvaluationState { activeSince?: Date; lastSampleAt?: Date; triggered: boolean }
 
 export interface RuleEvaluationStateStore {
   get(scopeKey: string): Promise<RuleEvaluationState | undefined>
@@ -20,11 +20,11 @@ export class InMemoryRuleEvaluationStateStore implements RuleEvaluationStateStor
 
   async get(scopeKey: string): Promise<RuleEvaluationState | undefined> {
     const state = this.states.get(scopeKey)
-    return state ? { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined } : undefined
+    return state ? { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined, lastSampleAt: state.lastSampleAt ? new Date(state.lastSampleAt) : undefined } : undefined
   }
 
   async set(scopeKey: string, state: RuleEvaluationState): Promise<void> {
-    this.states.set(scopeKey, { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined })
+    this.states.set(scopeKey, { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined, lastSampleAt: state.lastSampleAt ? new Date(state.lastSampleAt) : undefined })
   }
 
   async clear(scopeKey: string): Promise<void> { this.states.delete(scopeKey) }
@@ -74,12 +74,24 @@ export class RuleEngine {
     }
     const previousState = await this.stateStore.get(scopeKey)
     // Out-of-order samples must not inherit a duration window from the future.
-    const since = previousState?.activeSince && sample.timestamp.getTime() >= previousState.activeSince.getTime()
+    const lastSampleAt = previousState?.lastSampleAt ?? previousState?.activeSince
+    const isOutOfOrder = Boolean(lastSampleAt && sample.timestamp.getTime() < lastSampleAt.getTime())
+    if (isOutOfOrder && previousState?.triggered) {
+      return { matched: false, activeSince: previousState.activeSince, reason: 'Out-of-order sample ignored; alert remains triggered' }
+    }
+    const since = previousState?.activeSince && !isOutOfOrder
       ? previousState.activeSince
       : sample.timestamp
-    await this.stateStore.set(scopeKey, { activeSince: since })
-    const matched = (now.getTime() - since.getTime()) / 1000 >= rule.duration
-    return { matched, activeSince: since, reason: matched ? 'Condition and duration are satisfied' : 'Condition is satisfied but duration is not complete' }
+    const alreadyTriggered = previousState?.triggered ?? false
+    const durationSatisfied = (now.getTime() - since.getTime()) / 1000 >= rule.duration
+    const matched = durationSatisfied && !alreadyTriggered
+    await this.stateStore.set(scopeKey, { activeSince: since, lastSampleAt: sample.timestamp, triggered: alreadyTriggered || matched })
+    const reason = matched
+      ? 'Condition and duration are satisfied; alert triggered'
+      : alreadyTriggered && durationSatisfied
+        ? 'Condition remains satisfied; alert was already triggered'
+        : 'Condition is satisfied but duration is not complete'
+    return { matched, activeSince: since, reason }
   }
   async clear(scopeKey: string): Promise<void> { await this.stateStore.clear(scopeKey) }
 }
