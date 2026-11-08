@@ -6,7 +6,7 @@ export interface Rule { id: string; name: string; metric: string; operator: Oper
 export interface MetricSample { metric: string; value: number; timestamp: Date }
 export interface RuleEvaluation { matched: boolean; activeSince?: Date; reason: string }
 
-export interface RuleEvaluationState { activeSince?: Date }
+export interface RuleEvaluationState { activeSince?: Date; triggered: boolean }
 
 export interface RuleEvaluationStateStore {
   get(scopeKey: string): Promise<RuleEvaluationState | undefined>
@@ -74,12 +74,20 @@ export class RuleEngine {
     }
     const previousState = await this.stateStore.get(scopeKey)
     // Out-of-order samples must not inherit a duration window from the future.
-    const since = previousState?.activeSince && sample.timestamp.getTime() >= previousState.activeSince.getTime()
+    const isOutOfOrder = Boolean(previousState?.activeSince && sample.timestamp.getTime() < previousState.activeSince.getTime())
+    const since = previousState?.activeSince && !isOutOfOrder
       ? previousState.activeSince
       : sample.timestamp
-    await this.stateStore.set(scopeKey, { activeSince: since })
-    const matched = (now.getTime() - since.getTime()) / 1000 >= rule.duration
-    return { matched, activeSince: since, reason: matched ? 'Condition and duration are satisfied' : 'Condition is satisfied but duration is not complete' }
+    const alreadyTriggered = isOutOfOrder ? false : previousState?.triggered ?? false
+    const durationSatisfied = (now.getTime() - since.getTime()) / 1000 >= rule.duration
+    const matched = durationSatisfied && !alreadyTriggered
+    await this.stateStore.set(scopeKey, { activeSince: since, triggered: alreadyTriggered || matched })
+    const reason = matched
+      ? 'Condition and duration are satisfied; alert triggered'
+      : alreadyTriggered && durationSatisfied
+        ? 'Condition remains satisfied; alert was already triggered'
+        : 'Condition is satisfied but duration is not complete'
+    return { matched, activeSince: since, reason }
   }
   async clear(scopeKey: string): Promise<void> { await this.stateStore.clear(scopeKey) }
 }
