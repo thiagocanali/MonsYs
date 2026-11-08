@@ -5,6 +5,31 @@ export type Severity = 'INFO' | 'WARNING' | 'CRITICAL'
 export interface Rule { id: string; name: string; metric: string; operator: Operator; threshold: number; duration: number; severity: Severity; runbookId?: string }
 export interface MetricSample { metric: string; value: number; timestamp: Date }
 export interface RuleEvaluation { matched: boolean; activeSince?: Date; reason: string }
+
+export interface RuleEvaluationState { activeSince?: Date }
+
+export interface RuleEvaluationStateStore {
+  get(scopeKey: string): Promise<RuleEvaluationState | undefined>
+  set(scopeKey: string, state: RuleEvaluationState): Promise<void>
+  clear(scopeKey: string): Promise<void>
+  clearAll(): Promise<void>
+}
+
+export class InMemoryRuleEvaluationStateStore implements RuleEvaluationStateStore {
+  private readonly states = new Map<string, RuleEvaluationState>()
+
+  async get(scopeKey: string): Promise<RuleEvaluationState | undefined> {
+    const state = this.states.get(scopeKey)
+    return state ? { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined } : undefined
+  }
+
+  async set(scopeKey: string, state: RuleEvaluationState): Promise<void> {
+    this.states.set(scopeKey, { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined })
+  }
+
+  async clear(scopeKey: string): Promise<void> { this.states.delete(scopeKey) }
+  async clearAll(): Promise<void> { this.states.clear() }
+}
 export interface Event { id: string; organizationId: string; deviceId: string; ruleId: string; severity: Severity; status: 'OPEN' | 'RESOLVED'; title: string; message: string; createdAt: Date; updatedAt: Date; resolvedAt?: Date }
 
 export function validateRule(rule: Rule): void {
@@ -33,29 +58,30 @@ export function evaluateCondition(operator: Operator, value: number, threshold: 
 }
 
 export class RuleEngine {
-  private readonly activeSince = new Map<string, Date>()
-  evaluate(rule: Rule, sample: MetricSample, now = sample.timestamp, scopeKey = rule.id): RuleEvaluation {
+  constructor(private readonly stateStore: RuleEvaluationStateStore = new InMemoryRuleEvaluationStateStore()) {}
+
+  async evaluate(rule: Rule, sample: MetricSample, now = sample.timestamp, scopeKey = rule.id): Promise<RuleEvaluation> {
     validateRule(rule)
     validateMetricSample(sample)
     if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('Evaluation time must be a valid date')
     if (sample.metric !== rule.metric) {
-      this.activeSince.delete(scopeKey)
+      await this.stateStore.clear(scopeKey)
       return { matched: false, reason: 'Metric does not match rule' }
     }
     if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) {
       this.activeSince.delete(scopeKey)
       return { matched: false, reason: 'Condition is not satisfied' }
     }
-    const previousSince = this.activeSince.get(scopeKey)
+    const previousState = await this.stateStore.get(scopeKey)
     // Out-of-order samples must not inherit a duration window from the future.
-    const since = previousSince && sample.timestamp.getTime() >= previousSince.getTime()
-      ? previousSince
+    const since = previousState?.activeSince && sample.timestamp.getTime() >= previousState.activeSince.getTime()
+      ? previousState.activeSince
       : sample.timestamp
-    this.activeSince.set(scopeKey, since)
+    await this.stateStore.set(scopeKey, { activeSince: since })
     const matched = (now.getTime() - since.getTime()) / 1000 >= rule.duration
     return { matched, activeSince: since, reason: matched ? 'Condition and duration are satisfied' : 'Condition is satisfied but duration is not complete' }
   }
-  clear(ruleId: string): void { this.activeSince.delete(ruleId) }
+  async clear(scopeKey: string): Promise<void> { await this.stateStore.clear(scopeKey) }
 }
 
 export function createEvent(rule: Rule, organizationId: string, deviceId: string, sample: MetricSample, id: string = crypto.randomUUID()): Event {
