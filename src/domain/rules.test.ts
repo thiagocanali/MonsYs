@@ -68,6 +68,18 @@ describe('Rule Engine', () => {
     expect(repeated.reason).toContain('already triggered')
   })
 
+  it('ignora amostras antigas depois que o alerta já foi disparado', async () => {
+    const engine = new RuleEngine()
+    const scope = 'org-1:device-1:r-1'
+
+    await engine.evaluate(baseRule, sample(95), sample(95).timestamp, scope)
+    expect((await engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, scope)).matched).toBe(true)
+    const stale = await engine.evaluate(baseRule, sample(95, 30), sample(95, 30).timestamp, scope)
+    expect(stale.matched).toBe(false)
+    expect(stale.reason).toContain('Out-of-order')
+    expect((await engine.evaluate(baseRule, sample(95, 90), sample(95, 90).timestamp, scope)).matched).toBe(false)
+  })
+
   it('permite novo alerta depois que a condição é normalizada', async () => {
     const engine = new RuleEngine()
     const scope = 'org-1:device-1:r-1'
