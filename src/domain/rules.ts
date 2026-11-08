@@ -15,6 +15,14 @@ export function validateRule(rule: Rule): void {
   if (!['INFO', 'WARNING', 'CRITICAL'].includes(rule.severity)) throw new Error(`Unsupported severity: ${rule.severity}`)
 }
 
+export function validateMetricSample(sample: MetricSample): void {
+  if (!sample.metric.trim()) throw new Error('Metric name is required')
+  if (!Number.isFinite(sample.value)) throw new Error('Metric value must be a finite number')
+  if (!(sample.timestamp instanceof Date) || Number.isNaN(sample.timestamp.getTime())) {
+    throw new Error('Metric timestamp must be a valid date')
+  }
+}
+
 export function evaluateCondition(operator: Operator, value: number, threshold: number): boolean {
   if (operator === '>') return value > threshold
   if (operator === '<') return value < threshold
@@ -27,9 +35,21 @@ export class RuleEngine {
   private readonly activeSince = new Map<string, Date>()
   evaluate(rule: Rule, sample: MetricSample, now = sample.timestamp, scopeKey = rule.id): RuleEvaluation {
     validateRule(rule)
-    if (sample.metric !== rule.metric) return { matched: false, reason: 'Metric does not match rule' }
-    if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) { this.activeSince.delete(scopeKey); return { matched: false, reason: 'Condition is not satisfied' } }
-    const since = this.activeSince.get(scopeKey) ?? sample.timestamp
+    validateMetricSample(sample)
+    if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('Evaluation time must be a valid date')
+    if (sample.metric !== rule.metric) {
+      this.activeSince.delete(scopeKey)
+      return { matched: false, reason: 'Metric does not match rule' }
+    }
+    if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) {
+      this.activeSince.delete(scopeKey)
+      return { matched: false, reason: 'Condition is not satisfied' }
+    }
+    const previousSince = this.activeSince.get(scopeKey)
+    // Out-of-order samples must not inherit a duration window from the future.
+    const since = previousSince && sample.timestamp.getTime() >= previousSince.getTime()
+      ? previousSince
+      : sample.timestamp
     this.activeSince.set(scopeKey, since)
     const matched = (now.getTime() - since.getTime()) / 1000 >= rule.duration
     return { matched, activeSince: since, reason: matched ? 'Condition and duration are satisfied' : 'Condition is satisfied but duration is not complete' }
@@ -38,6 +58,9 @@ export class RuleEngine {
 }
 
 export function createEvent(rule: Rule, organizationId: string, deviceId: string, sample: MetricSample, id: string = crypto.randomUUID()): Event {
+  validateRule(rule)
+  validateMetricSample(sample)
+  if (!organizationId.trim() || !deviceId.trim()) throw new Error('Organization and device are required')
   const now = sample.timestamp
   return { id, organizationId, deviceId, ruleId: rule.id, severity: rule.severity, status: 'OPEN', title: rule.name, message: `${sample.metric} ${rule.operator} ${rule.threshold} (observed: ${sample.value})`, createdAt: now, updatedAt: now }
 }
