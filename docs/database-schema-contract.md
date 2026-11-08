@@ -56,8 +56,8 @@ These are design requirements to validate during migration design, not a claim a
 
 ## Next safe database milestone
 
-- Generate Better Auth schema with the installed package version and configuration.
-- Obtain a read-only schema inventory and migration history from the target database without sharing secrets.
+- Follow `docs/better-auth-schema-generation.md` to generate the Better Auth schema with the lockfile-matched CLI version.
+- Run `docs/database-readonly-inspection.sql` against the target database to obtain a read-only schema, constraints, indexes, and migration-history inventory without sharing secrets.
 - Compare actual schema with this contract.
 - Draft additive, idempotent migrations and a legacy-agent reconciliation plan.
 - Run migration tests against a disposable PostgreSQL database before considering the live project.
