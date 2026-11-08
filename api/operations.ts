@@ -2,13 +2,13 @@ import { createEvent, RuleEngine, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
 import { authenticateAgent } from '../src/server/agent-auth.js'
+import { saveHeartbeat } from '../src/server/heartbeat-repository.js'
 import { requireOrganizationAccess } from '../src/server/tenant-auth.js'
 import {
   getIncidentDetails,
   listAuditLogs,
   listIncidents,
   listTelemetrySamples,
-  saveAgent,
   saveEventIncident,
   saveTelemetrySample,
 } from '../src/server/operations-repository.js'
@@ -161,7 +161,7 @@ export default async function handler(request: Request): Promise<Response> {
         version: heartbeat.agentVersion,
         connected: true as const,
       }
-      await saveAgent(agent, heartbeat.hostname, heartbeat.timestamp)
+      await saveHeartbeat(agent, heartbeat.hostname, { ...heartbeat, organizationId: authenticatedAgent.organizationId })
       return Response.json(
         { agent, status: heartbeat.status, lastSeenAt: heartbeat.timestamp, metrics: heartbeat.metrics },
         { status: 200 },
