@@ -75,10 +75,13 @@ export class RuleEngine {
     const previousState = await this.stateStore.get(scopeKey)
     // Out-of-order samples must not inherit a duration window from the future.
     const isOutOfOrder = Boolean(previousState?.activeSince && sample.timestamp.getTime() < previousState.activeSince.getTime())
+    if (isOutOfOrder && previousState?.triggered) {
+      return { matched: false, activeSince: previousState.activeSince, reason: 'Out-of-order sample ignored; alert remains triggered' }
+    }
     const since = previousState?.activeSince && !isOutOfOrder
       ? previousState.activeSince
       : sample.timestamp
-    const alreadyTriggered = isOutOfOrder ? false : previousState?.triggered ?? false
+    const alreadyTriggered = previousState?.triggered ?? false
     const durationSatisfied = (now.getTime() - since.getTime()) / 1000 >= rule.duration
     const matched = durationSatisfied && !alreadyTriggered
     await this.stateStore.set(scopeKey, { activeSince: since, triggered: alreadyTriggered || matched })
