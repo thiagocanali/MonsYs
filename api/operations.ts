@@ -109,7 +109,7 @@ export default async function handler(request: Request): Promise<Response> {
 
       if (payload.rule) {
         const rule = payload.rule as Rule
-        const evaluation = ruleEngine.evaluate(
+        const evaluation = await ruleEngine.evaluate(
           rule,
           { metric: normalizedMetric, value, timestamp: recordedAt },
           recordedAt,
