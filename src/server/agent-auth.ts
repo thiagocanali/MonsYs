@@ -29,7 +29,7 @@ export async function authenticateAgent(
 ): Promise<AuthenticatedAgent | null> {
   const authorization = request.headers.get('authorization')
   const token = request.headers.get('x-agent-token')
-    ?? (authorization?.match(/^Bearer\\s+(.+)$/i)?.[1] ?? null)
+    ?? (authorization?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null)
   if (!token || !token.startsWith('monsys_')) return null
 
   const result = await authPool.query<{
