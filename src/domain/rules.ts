@@ -8,6 +8,13 @@ export interface RuleEvaluation { matched: boolean; activeSince?: Date; reason: 
 
 export interface RuleEvaluationState { activeSince?: Date; lastSampleAt?: Date; triggered: boolean }
 
+/** Builds an unambiguous tenant/device/rule key for evaluation state. */
+export function createRuleEvaluationScopeKey(organizationId: string, deviceId: string, ruleId: string): string {
+  const parts = [organizationId, deviceId, ruleId]
+  if (parts.some(part => !part.trim())) throw new Error('Organization, device and rule IDs are required for rule evaluation scope')
+  return JSON.stringify(parts)
+}
+
 export interface RuleEvaluationStateStore {
   get(scopeKey: string): Promise<RuleEvaluationState | undefined>
   set(scopeKey: string, state: RuleEvaluationState): Promise<void>

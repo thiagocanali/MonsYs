@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { InMemoryRuleEvaluationStateStore, RuleEngine, createEvent, type Rule, type MetricSample, evaluateCondition } from './rules.js'
+import { InMemoryRuleEvaluationStateStore, RuleEngine, createEvent, createRuleEvaluationScopeKey, type Rule, type MetricSample, evaluateCondition } from './rules.js'
 
 const baseRule: Rule = { id: 'r-1', name: 'CPU alta', metric: 'cpu_usage', operator: '>', threshold: 90, duration: 60, severity: 'WARNING' }
 const sample = (value: number, seconds = 0): MetricSample => ({ metric: 'cpu_usage', value, timestamp: new Date(1_000_000 + seconds * 1000) })
@@ -45,6 +45,27 @@ describe('Rule Engine', () => {
     expect((await engine.evaluate(baseRule, sample(95))).matched).toBe(false)
     expect((await engine.evaluate(baseRule, sample(95, 59))).matched).toBe(false)
     expect((await engine.evaluate(baseRule, sample(95, 60))).matched).toBe(true)
+  })
+
+  it('isola o estado entre organizações e evita colisões de IDs compostos', async () => {
+    const engine = new RuleEngine()
+    const firstScope = createRuleEvaluationScopeKey('org:one', 'device', 'rule')
+    const secondScope = createRuleEvaluationScopeKey('org', 'one:device', 'rule')
+    expect(firstScope).not.toBe(secondScope)
+
+    const first = new Date(1_000_000)
+    await engine.evaluate(baseRule, { metric: 'cpu_usage', value: 95, timestamp: first }, first, createRuleEvaluationScopeKey('org-1', 'device-1', 'r-1'))
+    const otherOrganization = await engine.evaluate(
+      baseRule,
+      { metric: 'cpu_usage', value: 95, timestamp: new Date(1_060_000) },
+      new Date(1_060_000),
+      createRuleEvaluationScopeKey('org-2', 'device-1', 'r-1'),
+    )
+    expect(otherOrganization.matched).toBe(false)
+  })
+
+  it('rejeita partes vazias na chave de escopo', () => {
+    expect(() => createRuleEvaluationScopeKey('org', ' ', 'rule')).toThrow('IDs are required')
   })
 
   it('isola duration por dispositivo quando a mesma regra é compartilhada', async () => {
