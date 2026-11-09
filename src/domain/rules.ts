@@ -98,7 +98,7 @@ export class RuleEngine {
     validateRule(rule)
     validateMetricSample(sample)
     if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('Evaluation time must be a valid date')
-    return this.stateStore.transact(scopeKey, previousState => {
+    return this.stateStore.transact<RuleEvaluation>(scopeKey, previousState => {
       if (sample.metric !== rule.metric) return { state: undefined, result: { matched: false, reason: 'Metric does not match rule' } }
       if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) return { state: undefined, result: { matched: false, reason: 'Condition is not satisfied' } }
 
