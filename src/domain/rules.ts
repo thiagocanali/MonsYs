@@ -15,27 +15,54 @@ export function createRuleEvaluationScopeKey(organizationId: string, deviceId: s
   return JSON.stringify(parts)
 }
 
+export interface RuleEvaluationStateMutation<T> {
+  state: RuleEvaluationState | undefined
+  result: T
+}
+
+/**
+ * A store must serialize each transaction by scopeKey. PostgreSQL adapters must
+ * hold a transaction-scoped database lock until the new state is saved.
+ */
 export interface RuleEvaluationStateStore {
-  get(scopeKey: string): Promise<RuleEvaluationState | undefined>
-  set(scopeKey: string, state: RuleEvaluationState): Promise<void>
+  transact<T>(scopeKey: string, operation: (current: RuleEvaluationState | undefined) => RuleEvaluationStateMutation<T>): Promise<T>
   clear(scopeKey: string): Promise<void>
-  clearAll(): Promise<void>
+}
+
+function cloneRuleEvaluationState(state: RuleEvaluationState | undefined): RuleEvaluationState | undefined {
+  return state ? { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined, lastSampleAt: state.lastSampleAt ? new Date(state.lastSampleAt) : undefined } : undefined
 }
 
 export class InMemoryRuleEvaluationStateStore implements RuleEvaluationStateStore {
   private readonly states = new Map<string, RuleEvaluationState>()
+  private readonly locks = new Map<string, Promise<void>>()
 
-  async get(scopeKey: string): Promise<RuleEvaluationState | undefined> {
-    const state = this.states.get(scopeKey)
-    return state ? { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined, lastSampleAt: state.lastSampleAt ? new Date(state.lastSampleAt) : undefined } : undefined
+  private async exclusively<T>(scopeKey: string, operation: () => T | Promise<T>): Promise<T> {
+    const previous = this.locks.get(scopeKey) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>(resolve => { release = resolve })
+    this.locks.set(scopeKey, current)
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (this.locks.get(scopeKey) === current) this.locks.delete(scopeKey)
+    }
   }
 
-  async set(scopeKey: string, state: RuleEvaluationState): Promise<void> {
-    this.states.set(scopeKey, { ...state, activeSince: state.activeSince ? new Date(state.activeSince) : undefined, lastSampleAt: state.lastSampleAt ? new Date(state.lastSampleAt) : undefined })
+  async transact<T>(scopeKey: string, operation: (current: RuleEvaluationState | undefined) => RuleEvaluationStateMutation<T>): Promise<T> {
+    return this.exclusively(scopeKey, () => {
+      const mutation = operation(cloneRuleEvaluationState(this.states.get(scopeKey)))
+      if (mutation.state) this.states.set(scopeKey, cloneRuleEvaluationState(mutation.state)!)
+      else this.states.delete(scopeKey)
+      return mutation.result
+    })
   }
 
-  async clear(scopeKey: string): Promise<void> { this.states.delete(scopeKey) }
-  async clearAll(): Promise<void> { this.states.clear() }
+  async clear(scopeKey: string): Promise<void> {
+    await this.exclusively(scopeKey, () => { this.states.delete(scopeKey) })
+  }
 }
 export interface Event { id: string; organizationId: string; deviceId: string; ruleId: string; severity: Severity; status: 'OPEN' | 'RESOLVED'; title: string; message: string; createdAt: Date; updatedAt: Date; resolvedAt?: Date }
 
@@ -71,34 +98,29 @@ export class RuleEngine {
     validateRule(rule)
     validateMetricSample(sample)
     if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('Evaluation time must be a valid date')
-    if (sample.metric !== rule.metric) {
-      await this.stateStore.clear(scopeKey)
-      return { matched: false, reason: 'Metric does not match rule' }
-    }
-    if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) {
-      await this.stateStore.clear(scopeKey)
-      return { matched: false, reason: 'Condition is not satisfied' }
-    }
-    const previousState = await this.stateStore.get(scopeKey)
-    // Out-of-order samples must not inherit a duration window from the future.
-    const lastSampleAt = previousState?.lastSampleAt ?? previousState?.activeSince
-    const isOutOfOrder = Boolean(lastSampleAt && sample.timestamp.getTime() < lastSampleAt.getTime())
-    if (isOutOfOrder && previousState?.triggered) {
-      return { matched: false, activeSince: previousState.activeSince, reason: 'Out-of-order sample ignored; alert remains triggered' }
-    }
-    const since = previousState?.activeSince && !isOutOfOrder
-      ? previousState.activeSince
-      : sample.timestamp
-    const alreadyTriggered = previousState?.triggered ?? false
-    const durationSatisfied = (now.getTime() - since.getTime()) / 1000 >= rule.duration
-    const matched = durationSatisfied && !alreadyTriggered
-    await this.stateStore.set(scopeKey, { activeSince: since, lastSampleAt: sample.timestamp, triggered: alreadyTriggered || matched })
-    const reason = matched
-      ? 'Condition and duration are satisfied; alert triggered'
-      : alreadyTriggered && durationSatisfied
-        ? 'Condition remains satisfied; alert was already triggered'
-        : 'Condition is satisfied but duration is not complete'
-    return { matched, activeSince: since, reason }
+    return this.stateStore.transact<RuleEvaluation>(scopeKey, previousState => {
+      if (sample.metric !== rule.metric) return { state: undefined, result: { matched: false, reason: 'Metric does not match rule' } }
+      if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) return { state: undefined, result: { matched: false, reason: 'Condition is not satisfied' } }
+
+      // Out-of-order samples must not inherit a duration window from the future.
+      const lastSampleAt = previousState?.lastSampleAt ?? previousState?.activeSince
+      const isOutOfOrder = Boolean(lastSampleAt && sample.timestamp.getTime() < lastSampleAt.getTime())
+      if (isOutOfOrder && previousState?.triggered) {
+        return { state: previousState, result: { matched: false, activeSince: previousState.activeSince, reason: 'Out-of-order sample ignored; alert remains triggered' } }
+      }
+
+      const since = previousState?.activeSince && !isOutOfOrder ? previousState.activeSince : sample.timestamp
+      const alreadyTriggered = previousState?.triggered ?? false
+      const durationSatisfied = (now.getTime() - since.getTime()) / 1000 >= rule.duration
+      const matched = durationSatisfied && !alreadyTriggered
+      const state = { activeSince: since, lastSampleAt: sample.timestamp, triggered: alreadyTriggered || matched }
+      const reason = matched
+        ? 'Condition and duration are satisfied; alert triggered'
+        : alreadyTriggered && durationSatisfied
+          ? 'Condition remains satisfied; alert was already triggered'
+          : 'Condition is satisfied but duration is not complete'
+      return { state, result: { matched, activeSince: since, reason } }
+    })
   }
   async clear(scopeKey: string): Promise<void> { await this.stateStore.clear(scopeKey) }
 }

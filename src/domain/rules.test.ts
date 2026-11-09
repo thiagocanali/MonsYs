@@ -142,4 +142,20 @@ describe('Rule evaluation state store', () => {
 
     expect(evaluation.matched).toBe(true)
   })
+
+  it('serializa avaliações simultâneas para não disparar dois alertas', async () => {
+    const store = new InMemoryRuleEvaluationStateStore()
+    const firstEngine = new RuleEngine(store)
+    const secondEngine = new RuleEngine(store)
+    const scope = createRuleEvaluationScopeKey('org-1', 'device-1', 'r-1')
+
+    await firstEngine.evaluate(baseRule, sample(95), sample(95).timestamp, scope)
+    const thresholdSample = sample(95, 60)
+    const [first, second] = await Promise.all([
+      firstEngine.evaluate(baseRule, thresholdSample, thresholdSample.timestamp, scope),
+      secondEngine.evaluate(baseRule, thresholdSample, thresholdSample.timestamp, scope),
+    ])
+
+    expect([first.matched, second.matched].filter(Boolean)).toHaveLength(1)
+  })
 })
