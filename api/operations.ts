@@ -1,4 +1,4 @@
-import { createEvent, RuleEngine, validateRule, type Rule } from '../src/domain/rules.js'
+import { createEvent, createRuleEvaluationScopeKey, RuleEngine, validateRule, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
 import { authenticateAgent } from '../src/server/agent-auth.js'
@@ -113,7 +113,7 @@ export default async function handler(request: Request): Promise<Response> {
           rule,
           { metric: normalizedMetric, value, timestamp: recordedAt },
           recordedAt,
-          `${normalizedOrganizationId}:${normalizedDeviceId}:${rule.id}`,
+          createRuleEvaluationScopeKey(normalizedOrganizationId, normalizedDeviceId, rule.id),
         )
 
         if (evaluation.matched) {
