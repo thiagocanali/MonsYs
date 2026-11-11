@@ -1,3 +1,5 @@
+> Historical review. For the current inspection, implemented fixes, migration status and remaining work, see [the 2026-11-11 engineering review](./engineering-review-2026-11-11.md).
+
 # Better Auth schema generation and database inspection
 
 **Purpose:** produce a version-matched Better Auth schema artifact and a read-only inventory of the target PostgreSQL database before any migration is designed or applied.

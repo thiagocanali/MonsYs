@@ -1,3 +1,5 @@
+> Historical review. For the current inspection, implemented fixes, migration status and remaining work, see [the 2026-11-11 engineering review](./engineering-review-2026-11-11.md).
+
 # MonsYs — Authentication, tenant security and database readiness
 
 ## Current implementation status
