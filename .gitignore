@@ -5,3 +5,6 @@ dist/
 .vercel/
 work/
 coverage/
+
+supabase/.temp/
+supabase/.branches/
