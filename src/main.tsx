@@ -77,10 +77,16 @@ function App() {
   if (!organizationId) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
 
   const signOut = async () => {
-    await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
-    setSession(null)
-    setOrganizations([])
-    setOrganizationId(null)
+    setAuthLoading(true)
+    try {
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+    } finally {
+      await loadSession()
+    }
   }
 
   const loadIncidents = async () => {
