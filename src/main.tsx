@@ -29,15 +29,42 @@ function App() {
   const [organizations, setOrganizations] = React.useState<Array<{ id: string; name: string; role: string }>>([])
 
   const loadSession = React.useCallback(async () => {
+    setAuthLoading(true)
     try {
-      const response = await fetch('/api/auth/get-session', { credentials: 'include' })
-      const payload = response.ok ? await response.json() : null
-      setSession(payload)
-      if (payload?.user) {
-        const memberships = await fetch('/api/organizations', { credentials: 'include' }).then(result => result.json())
-        setOrganizations(memberships)
-        setOrganizationId(memberships[0]?.id ?? null)
+      const response = await fetch('/api/auth/get-session', {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      })
+      if (!response.ok) {
+        setSession(null)
+        setOrganizations([])
+        setOrganizationId(null)
+        return
       }
+
+      const payload = await response.json() as { user?: { name: string; email: string } } | null
+      if (!payload?.user) {
+        setSession(null)
+        setOrganizations([])
+        setOrganizationId(null)
+        return
+      }
+
+      setSession({ user: payload.user })
+      const membershipsResponse = await fetch('/api/organizations', {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      })
+      if (!membershipsResponse.ok) throw new Error('Não foi possível carregar as organizações')
+      const memberships = await membershipsResponse.json() as Array<{ id: string; name: string; role: string }>
+      setOrganizations(memberships)
+      setOrganizationId(current => memberships.some(organization => organization.id === current) ? current : memberships[0]?.id ?? null)
+    } catch {
+      setSession(null)
+      setOrganizations([])
+      setOrganizationId(null)
     } finally {
       setAuthLoading(false)
     }
@@ -50,10 +77,16 @@ function App() {
   if (!organizationId) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
 
   const signOut = async () => {
-    await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
-    setSession(null)
-    setOrganizations([])
-    setOrganizationId(null)
+    setAuthLoading(true)
+    try {
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+    } finally {
+      await loadSession()
+    }
   }
 
   const loadIncidents = async () => {
