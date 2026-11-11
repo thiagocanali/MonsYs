@@ -16,7 +16,7 @@ interface IncidentDetails {
 }
 
 async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, { credentials: 'include', signal })
+  const response = await fetch(url, { credentials: 'include', cache: 'no-store', signal })
   if (!response.ok) throw new Error('Não foi possível carregar os dados. Tente novamente.')
   return response.json() as Promise<T>
 }
@@ -108,6 +108,8 @@ function App() {
   const signOut = async () => {
     const response = await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
     if (!response.ok) throw new Error('Sign-out failed')
+    const remaining = await getJSON<Session | null>('/api/auth/get-session')
+    if (remaining?.user) throw new Error('Session is still active')
     setSession(null)
     setOrganizations([])
   }
