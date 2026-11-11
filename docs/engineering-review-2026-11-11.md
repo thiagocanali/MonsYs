@@ -95,3 +95,12 @@ Os documentos anteriores continuam como registro histórico e apontam para esta 
 Durante a revisão, `main` recebeu o PR #30 (`0ef6352`) com ajustes do cadastro/login, catch-all de autenticação e a mesma fundação auth do Supabase. A branch foi integrada com esse commit, preservando validação de formulário, mensagens em português, senha mínima, origens locais e confirmação da sessão após logout. O catch-all usa o handler Web compartilhado. O histórico auth é idêntico ao arquivo recuperado nesta revisão.
 
 Os logs do deployment anterior confirmaram `TypeError: Invalid URL` em `/api/auth/ok`: a função recebia a URL relativa do request Node, enquanto o Better Auth esperava um Request Web. O export `{ fetch: handler }` corrige essa fronteira. O healthcheck anterior também excedeu 300 segundos; o pool atualizado possui timeout de conexão de 5 segundos e de statement de 15 segundos. Esses achados pertencem ao deployment anterior e não provam conectividade da nova versão com o banco remoto.
+
+## Preview e CI verificados
+
+- CI do GitHub executada para `40fc866`: [run 43123227502](https://github.com/thiagocanali/MonsYs/actions/runs/43123227502), concluída com sucesso.
+- Preview Vercel `monsys-ejrlb5s04-thiagocanalis-projects.vercel.app`, commit `40fc866`, estado READY.
+- `/api/auth/ok`: HTTP 200, `{"ok":true}`. `/api/auth/get-session`: HTTP 200, `null` sem cookie. `/api/health`: HTTP 200, banco OK, consulta em 58 ms. Headers confirmam `Cache-Control: no-store`.
+- O endpoint de organizações exige sessão; não foi feito cadastro de usuários nem teste autenticado no banco remoto.
+- A última revisão do frontend também foi exercitada localmente com criação de incidente real, detalhes selecionados repetidamente e troca de organização sem resíduos de dados do tenant anterior.
+- Os testes remotos acima validam conectividade e roteamento, mas não a presença das tabelas operacionais nem a execução de migrações no banco da integração.

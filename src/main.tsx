@@ -36,7 +36,7 @@ function Dashboard({ session, organizations, onSignOut }: { session: Session; or
     setLoading(true)
     setError('')
     void getJSON<Incident[]>(`/api/operations?organizationId=${encodeURIComponent(organizationId)}&limit=200`, controller.signal)
-      .then(setIncidents)
+      .then(items => { if (!controller.signal.aborted) setIncidents(items) })
       .catch(() => { if (!controller.signal.aborted) setError('Não foi possível carregar os incidentes.') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -47,7 +47,7 @@ function Dashboard({ session, organizations, onSignOut }: { session: Session; or
     const controller = new AbortController()
     setDetails(null)
     void getJSON<IncidentDetails>(`/api/operations?organizationId=${encodeURIComponent(organizationId)}&incidentId=${encodeURIComponent(selectedId)}`, controller.signal)
-      .then(setDetails)
+      .then(item => { if (!controller.signal.aborted) setDetails(item) })
       .catch(() => { if (!controller.signal.aborted) setError('Não foi possível carregar os detalhes.') })
     return () => controller.abort()
   }, [organizationId, selectedId, revision])
@@ -78,7 +78,7 @@ function Dashboard({ session, organizations, onSignOut }: { session: Session; or
       <section className="metric-grid"><div className="metric-card"><span>Incidentes carregados (até 200)</span><strong>{loading || error ? '—' : incidents.length}</strong></div><div className="metric-card"><span>Ativos nesta lista</span><strong>{loading || error ? '—' : activeCount}</strong></div></section>
       <div className="content-grid"><section id="incidents" className="events-card" aria-busy={loading}><div className="section-heading"><h2>Incidentes recentes</h2></div>
         {!loading && !error && incidents.length === 0 && <p>Nenhum incidente registrado nesta organização.</p>}
-        {incidents.map(incident => <article className="persisted-summary" key={incident.id}><strong>{incident.title}</strong><span>{incident.device_id} · {incident.severity} · {incident.status}</span><time dateTime={incident.created_at}>{new Date(incident.created_at).toLocaleString('pt-BR')}</time><button className="link" onClick={() => { setDetails(null); setSelectedId(incident.id) }}>Ver detalhes →</button></article>)}
+        {incidents.map(incident => <article className="persisted-summary" key={incident.id}><strong>{incident.title}</strong><span>{incident.device_id} · {incident.severity} · {incident.status}</span><time dateTime={incident.created_at}>{new Date(incident.created_at).toLocaleString('pt-BR')}</time><button className="link" onClick={() => { if (selectedId !== incident.id) { setDetails(null); setSelectedId(incident.id) } }}>Ver detalhes →</button></article>)}
       </section><section className="timeline-card"><div className="section-heading"><h2>Detalhes e timeline</h2></div>
         {!selectedId && <p>Selecione um incidente para consultar as evidências.</p>}
         {selectedId && !details && !error && <p role="status">Carregando detalhes...</p>}
