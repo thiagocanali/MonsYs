@@ -1,3 +1,5 @@
+import { ValidationError } from './validation.js'
+
 export type AgentStatus = 'ONLINE' | 'DEGRADED' | 'OFFLINE'
 
 export interface HeartbeatPayload {
@@ -13,10 +15,12 @@ export interface AgentHeartbeat extends HeartbeatPayload {
 }
 
 export function validateHeartbeat(payload: HeartbeatPayload): AgentHeartbeat {
-  if (!payload.deviceId || !payload.hostname || !payload.agentVersion) throw new Error('deviceId, hostname and agentVersion are required')
-  if (!(payload.timestamp instanceof Date) || Number.isNaN(payload.timestamp.getTime())) throw new Error('timestamp must be a valid date')
-  for (const [name, value] of Object.entries(payload.metrics)) {
-    if (!Number.isFinite(value) || value < 0 || value > 100) throw new Error(`${name} must be between 0 and 100`)
+  if ([payload.deviceId, payload.hostname, payload.agentVersion].some(value => typeof value !== 'string' || !value.trim() || value.length > 200)) throw new ValidationError('deviceId, hostname and agentVersion are required')
+  if (!(payload.timestamp instanceof Date) || Number.isNaN(payload.timestamp.getTime())) throw new ValidationError('timestamp must be a valid date')
+  if (!payload.metrics || typeof payload.metrics !== 'object' || Array.isArray(payload.metrics)) throw new ValidationError('cpu, memory and disk metrics are required')
+  for (const name of ['cpu', 'memory', 'disk'] as const) {
+    const value = payload.metrics[name]
+    if (!Number.isFinite(value) || value < 0 || value > 100) throw new ValidationError(`${name} must be between 0 and 100`)
   }
   return { ...payload, status: 'ONLINE' }
 }

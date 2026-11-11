@@ -1,7 +1,7 @@
 import React from 'react'
 
 interface AuthPanelProps {
-  onAuthenticated: () => void
+  onAuthenticated: () => Promise<void>
 }
 
 export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
@@ -25,7 +25,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
         body: JSON.stringify(mode === 'sign-in' ? { email, password } : { email, password, name }),
       })
       if (!response.ok) throw new Error('Não foi possível autenticar')
-      onAuthenticated()
+      await onAuthenticated()
     } catch {
       setError('Credenciais inválidas ou serviço indisponível.')
     } finally {

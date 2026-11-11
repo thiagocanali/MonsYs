@@ -39,7 +39,7 @@ export async function authenticateAgent(
   }>(
     `SELECT c.agent_id, c.organization_id, a.device_id
        FROM agent_credentials c
-       JOIN agents a ON a.id = c.agent_id
+       JOIN agents a ON a.id = c.agent_id AND a.organization_id = c.organization_id
       WHERE c.organization_id = $1
         AND a.device_id = $2
         AND c.token_hash = $3

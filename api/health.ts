@@ -1,8 +1,7 @@
-import { Pool } from 'pg'
+import { databasePool as pool } from '../src/server/database.js'
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
 
-export default async function handler(): Promise<Response> {
+export async function handler(): Promise<Response> {
   const startedAt = Date.now()
   try {
     await pool.query('SELECT 1')
@@ -11,3 +10,5 @@ export default async function handler(): Promise<Response> {
     return Response.json({ status: 'degraded', database: 'unavailable', latencyMs: Date.now() - startedAt, timestamp: new Date().toISOString() }, { status: 503 })
   }
 }
+
+export default { fetch: handler }

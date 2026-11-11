@@ -14,3 +14,10 @@ describe('agent heartbeat', () => {
     expect(getAgentStatus(new Date('2026-09-27T09:50:00Z'), now)).toBe('OFFLINE')
   })
 })
+
+
+describe('required heartbeat metrics', () => {
+  it.each([{}, { cpu: 1 }, { cpu: 1, memory: 2 }, null, []])('rejects incomplete metrics %j', metrics => {
+    expect(() => validateHeartbeat({ deviceId: 'device', hostname: 'host', agentVersion: '1.0', timestamp: new Date(), metrics } as Parameters<typeof validateHeartbeat>[0])).toThrow()
+  })
+})

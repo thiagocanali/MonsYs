@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { Pool } from 'pg'
+import { databasePool as pool } from './database.js'
 import type { AgentHeartbeat } from '../domain/agent.js'
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 export interface HeartbeatAgent {
   id: string
@@ -20,14 +19,14 @@ export async function saveHeartbeat(agent: HeartbeatAgent, hostname: string, hea
   try {
     await client.query('BEGIN')
     await client.query(
-      `INSERT INTO agents (id, device_id, version, connected, hostname, last_seen_at)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO agents (id, organization_id, device_id, version, connected, hostname, last_seen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (id) DO UPDATE SET
          version = EXCLUDED.version,
          connected = EXCLUDED.connected,
          hostname = EXCLUDED.hostname,
          last_seen_at = EXCLUDED.last_seen_at`,
-      [agent.id, agent.deviceId, agent.version, agent.connected, hostname, heartbeat.timestamp],
+      [agent.id, heartbeat.organizationId, agent.deviceId, agent.version, agent.connected, hostname, heartbeat.timestamp],
     )
 
     const metrics = [

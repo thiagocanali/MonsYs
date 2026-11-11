@@ -14,7 +14,7 @@ vi.mock('../src/server/auth.js', () => ({ authPool }))
 vi.mock('../src/server/tenant-auth.js', () => ({ requireOrganizationAccess }))
 vi.mock('../src/server/agent-auth.js', () => ({ issueAgentToken }))
 
-import handler from './agents.js'
+import { handler } from './agents.js'
 
 const request = () => new Request('http://localhost/api/agents', {
   method: 'POST',

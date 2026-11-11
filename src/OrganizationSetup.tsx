@@ -1,6 +1,6 @@
 import React from 'react'
 
-export function OrganizationSetup({ onCreated }: { onCreated: () => void }) {
+export function OrganizationSetup({ onCreated }: { onCreated: () => Promise<void> }) {
   const [name, setName] = React.useState('')
   const [slug, setSlug] = React.useState('')
   const [error, setError] = React.useState('')
@@ -13,7 +13,7 @@ export function OrganizationSetup({ onCreated }: { onCreated: () => void }) {
     try {
       const response = await fetch('/api/organizations', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, slug }) })
       if (!response.ok) throw new Error()
-      onCreated()
+      await onCreated()
     } catch {
       setError('Não foi possível criar a organização. Verifique se o slug está disponível.')
     } finally {

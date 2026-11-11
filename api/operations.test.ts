@@ -18,7 +18,7 @@ vi.mock('../src/server/operations-repository.js', () => ({
   saveTelemetrySample,
 }))
 
-import handler from './operations.js'
+import { handler } from './operations.js'
 
 describe('operations API authorization boundary', () => {
   beforeEach(() => {
@@ -121,5 +121,27 @@ describe('operations API authorization boundary', () => {
 
     expect(response.status).toBe(200)
     expect(requireOrganizationAccess).toHaveBeenCalledWith(expect.any(Request), 'org-a')
+  })
+})
+
+
+describe('operation error handling', () => {
+  it('does not expose database errors to clients', async () => {
+    requireOrganizationAccess.mockResolvedValue({ session: { user: { id: 'user-a' } }, role: 'OPERATOR' })
+    saveTelemetrySample.mockRejectedValueOnce(new Error('password=private internal SQL error'))
+    const response = await handler(new Request('http://localhost/api/operations', {
+      method: 'POST', body: JSON.stringify({ type: 'telemetry', organizationId: 'org-a', deviceId: 'device-a', metric: 'cpu', value: 95 }),
+    }))
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({ error: 'Unable to create operation' })
+  })
+  it('does not persist heartbeats with missing standard metrics', async () => {
+    saveHeartbeat.mockClear()
+    authenticateAgent.mockResolvedValue({ agentId: 'agent', organizationId: 'org-a', deviceId: 'device-a' })
+    const response = await handler(new Request('http://localhost/api/operations', {
+      method: 'POST', body: JSON.stringify({ type: 'heartbeat', organizationId: 'org-a', deviceId: 'device-a', hostname: 'host', agentVersion: '1.0', metrics: {} }),
+    }))
+    expect(response.status).toBe(422)
+    expect(saveHeartbeat).not.toHaveBeenCalled()
   })
 })

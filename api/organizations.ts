@@ -1,6 +1,9 @@
+import { rejectForeignOrigin } from '../src/server/request-origin.js'
 import { authPool, getSession } from '../src/server/auth.js'
 
-export default async function handler(request: Request): Promise<Response> {
+export async function handler(request: Request): Promise<Response> {
+  const originError = rejectForeignOrigin(request)
+  if (originError) return originError
   const session = await getSession(request)
   if (!session?.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -16,7 +19,7 @@ export default async function handler(request: Request): Promise<Response> {
     const body = await request.json().catch(() => null)
     const name = typeof body?.name === 'string' ? body.name.trim() : ''
     const slug = typeof body?.slug === 'string' ? body.slug.trim().toLowerCase() : ''
-    if (!name || !/^[a-z0-9-]{3,60}$/.test(slug)) return Response.json({ error: 'name and valid slug are required' }, { status: 400 })
+    if (!name || name.length > 200 || !/^[a-z0-9-]{3,60}$/.test(slug)) return Response.json({ error: 'name and valid slug are required' }, { status: 400 })
 
     const client = await authPool.connect()
     try {
@@ -42,3 +45,5 @@ export default async function handler(request: Request): Promise<Response> {
 
   return Response.json({ error: 'Method not allowed' }, { status: 405 })
 }
+
+export default { fetch: handler }

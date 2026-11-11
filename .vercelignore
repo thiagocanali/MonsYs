@@ -1,0 +1,7 @@
+node_modules
+work
+.git
+**/*.test.ts
+**/*.test.tsx
+docs
+MASTER_SPEC.md
