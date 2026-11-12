@@ -1,10 +1,11 @@
+import { rejectForeignOrigin } from './request-origin.js'
 import { authPool, getSession, type AuthSession } from './auth.js'
 
 export type OrganizationRole = 'ADMIN' | 'OPERATOR' | 'VIEWER'
 type OrganizationAccess = { response: Response } | { session: AuthSession; role: OrganizationRole }
 
 export function roleAllows(role: OrganizationRole | undefined, requiredRoles?: OrganizationRole[]) {
-  return Boolean(role && (!requiredRoles || requiredRoles.includes(role)))
+  return Boolean(role && ['ADMIN', 'OPERATOR', 'VIEWER'].includes(role) && (!requiredRoles || requiredRoles.includes(role)))
 }
 
 export async function requireOrganizationAccess(
@@ -12,6 +13,8 @@ export async function requireOrganizationAccess(
   organizationId: string,
   roles?: OrganizationRole[],
 ): Promise<OrganizationAccess> {
+  const originError = rejectForeignOrigin(request)
+  if (originError) return { response: originError }
   const session = await getSession(request)
   if (!session?.user) {
     return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }

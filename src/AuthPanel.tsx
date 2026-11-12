@@ -1,7 +1,7 @@
 import React from 'react'
 
 interface AuthPanelProps {
-  onAuthenticated: () => void
+  onAuthenticated: () => Promise<void>
 }
 
 type AuthErrorPayload = {

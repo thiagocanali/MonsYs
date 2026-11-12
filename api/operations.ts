@@ -1,3 +1,4 @@
+import { ValidationError } from '../src/domain/validation.js'
 import { createEvent, createRuleEvaluationScopeKey, RuleEngine, validateRule, type Rule } from '../src/domain/rules.js'
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
@@ -15,7 +16,7 @@ import {
 
 const ruleEngine = new RuleEngine()
 
-export default async function handler(request: Request): Promise<Response> {
+export async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
     try {
       const searchParams = new URL(request.url).searchParams
@@ -41,7 +42,7 @@ export default async function handler(request: Request): Promise<Response> {
         if (!details) return Response.json({ error: 'Incident not found' }, { status: 404 })
         return Response.json(details)
       }
-      return Response.json(await listIncidents(organizationId))
+      return Response.json(await listIncidents(organizationId, limit, offset))
     } catch {
       return Response.json({ error: 'Unable to load operations data' }, { status: 500 })
     }
@@ -52,7 +53,7 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   try {
-    const body: unknown = await request.json()
+    const body: unknown = await request.json().catch(() => { throw new ValidationError('Request body must be valid JSON') })
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return Response.json({ error: 'Request body must be a JSON object' }, { status: 400 })
     }
@@ -137,7 +138,7 @@ export default async function handler(request: Request): Promise<Response> {
     if (payload.type === 'heartbeat') {
       const organizationId = typeof payload.organizationId === 'string' ? payload.organizationId.trim() : ''
       const deviceId = typeof payload.deviceId === 'string' ? payload.deviceId.trim() : ''
-      if (!organizationId || !deviceId) return Response.json({ error: 'organizationId and deviceId are required' }, { status: 400 })
+      if (!organizationId || !deviceId || organizationId.length > 200 || deviceId.length > 200) return Response.json({ error: 'organizationId and deviceId are required' }, { status: 400 })
       const authenticatedAgent = await authenticateAgent(request, organizationId, deviceId)
       if (!authenticatedAgent) {
         return Response.json({ error: 'Invalid agent credential' }, { status: 401 })
@@ -149,9 +150,9 @@ export default async function handler(request: Request): Promise<Response> {
       }
 
       const heartbeat = validateHeartbeat({
-        deviceId: String(payload.deviceId ?? ''),
-        hostname: String(payload.hostname ?? ''),
-        agentVersion: String(payload.agentVersion ?? ''),
+        deviceId,
+        hostname: payload.hostname as string,
+        agentVersion: payload.agentVersion as string,
         timestamp: new Date(
           typeof payload.timestamp === 'string' || typeof payload.timestamp === 'number'
             ? payload.timestamp
@@ -225,7 +226,9 @@ export default async function handler(request: Request): Promise<Response> {
       { status: 201 },
     )
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unable to create operation'
-    return Response.json({ error: message }, { status: 422 })
+    if (error instanceof ValidationError) return Response.json({ error: error.message }, { status: 422 })
+    return Response.json({ error: 'Unable to create operation' }, { status: 500 })
   }
 }
+
+export default { fetch: handler }

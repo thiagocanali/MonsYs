@@ -1,3 +1,5 @@
+import { ValidationError } from './validation.js'
+
 export const OPERATORS = ['>', '<', '>=', '<=', '=='] as const
 export type Operator = (typeof OPERATORS)[number]
 export type Severity = 'INFO' | 'WARNING' | 'CRITICAL'
@@ -11,7 +13,7 @@ export interface RuleEvaluationState { activeSince?: Date; lastSampleAt?: Date; 
 /** Builds an unambiguous tenant/device/rule key for evaluation state. */
 export function createRuleEvaluationScopeKey(organizationId: string, deviceId: string, ruleId: string): string {
   const parts = [organizationId, deviceId, ruleId]
-  if (parts.some(part => !part.trim())) throw new Error('Organization, device and rule IDs are required for rule evaluation scope')
+  if (parts.some(part => !part.trim())) throw new ValidationError('Organization, device and rule IDs are required for rule evaluation scope')
   return JSON.stringify(parts)
 }
 
@@ -67,19 +69,20 @@ export class InMemoryRuleEvaluationStateStore implements RuleEvaluationStateStor
 export interface Event { id: string; organizationId: string; deviceId: string; ruleId: string; severity: Severity; status: 'OPEN' | 'RESOLVED'; title: string; message: string; createdAt: Date; updatedAt: Date; resolvedAt?: Date }
 
 export function validateRule(rule: Rule): void {
-  if (!rule.id.trim()) throw new Error('Rule ID is required')
-  if (!rule.name.trim() || !rule.metric.trim()) throw new Error('Rule name and metric are required')
-  if (!OPERATORS.includes(rule.operator)) throw new Error(`Unsupported operator: ${rule.operator}`)
-  if (!Number.isFinite(rule.threshold)) throw new Error('Threshold must be a finite number')
-  if (!Number.isFinite(rule.duration) || rule.duration < 0) throw new Error('Duration must be a non-negative number')
-  if (!['INFO', 'WARNING', 'CRITICAL'].includes(rule.severity)) throw new Error(`Unsupported severity: ${rule.severity}`)
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) throw new ValidationError('Rule must be an object')
+  if (typeof rule.id !== 'string' || !rule.id.trim() || rule.id.length > 200) throw new ValidationError('Rule ID is required')
+  if (typeof rule.name !== 'string' || typeof rule.metric !== 'string' || !rule.name.trim() || !rule.metric.trim() || rule.name.length > 200 || rule.metric.length > 100) throw new ValidationError('Rule name and metric are required')
+  if (!OPERATORS.includes(rule.operator)) throw new ValidationError(`Unsupported operator: ${rule.operator}`)
+  if (!Number.isFinite(rule.threshold)) throw new ValidationError('Threshold must be a finite number')
+  if (!Number.isFinite(rule.duration) || rule.duration < 0) throw new ValidationError('Duration must be a non-negative number')
+  if (!['INFO', 'WARNING', 'CRITICAL'].includes(rule.severity)) throw new ValidationError(`Unsupported severity: ${rule.severity}`)
 }
 
 export function validateMetricSample(sample: MetricSample): void {
-  if (!sample.metric.trim()) throw new Error('Metric name is required')
-  if (!Number.isFinite(sample.value)) throw new Error('Metric value must be a finite number')
+  if (typeof sample.metric !== 'string' || !sample.metric.trim() || sample.metric.length > 100) throw new ValidationError('Metric name is required')
+  if (!Number.isFinite(sample.value)) throw new ValidationError('Metric value must be a finite number')
   if (!(sample.timestamp instanceof Date) || Number.isNaN(sample.timestamp.getTime())) {
-    throw new Error('Metric timestamp must be a valid date')
+    throw new ValidationError('Metric timestamp must be a valid date')
   }
 }
 
@@ -97,19 +100,15 @@ export class RuleEngine {
   async evaluate(rule: Rule, sample: MetricSample, now = sample.timestamp, scopeKey = rule.id): Promise<RuleEvaluation> {
     validateRule(rule)
     validateMetricSample(sample)
-    if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('Evaluation time must be a valid date')
+    if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new ValidationError('Evaluation time must be a valid date')
     return this.stateStore.transact<RuleEvaluation>(scopeKey, previousState => {
-      if (sample.metric !== rule.metric) return { state: undefined, result: { matched: false, reason: 'Metric does not match rule' } }
-      if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) return { state: undefined, result: { matched: false, reason: 'Condition is not satisfied' } }
-
-      // Out-of-order samples must not inherit a duration window from the future.
-      const lastSampleAt = previousState?.lastSampleAt ?? previousState?.activeSince
-      const isOutOfOrder = Boolean(lastSampleAt && sample.timestamp.getTime() < lastSampleAt.getTime())
-      if (isOutOfOrder && previousState?.triggered) {
-        return { state: previousState, result: { matched: false, activeSince: previousState.activeSince, reason: 'Out-of-order sample ignored; alert remains triggered' } }
+      if (previousState?.lastSampleAt && sample.timestamp < previousState.lastSampleAt) {
+        return { state: previousState, result: { matched: false, activeSince: previousState.activeSince, reason: 'Out-of-order sample ignored' } }
       }
+      if (sample.metric !== rule.metric) return { state: undefined, result: { matched: false, reason: 'Metric does not match rule' } }
+      if (!evaluateCondition(rule.operator, sample.value, rule.threshold)) return { state: { lastSampleAt: sample.timestamp, triggered: false }, result: { matched: false, reason: 'Condition is not satisfied' } }
 
-      const since = previousState?.activeSince && !isOutOfOrder ? previousState.activeSince : sample.timestamp
+      const since = previousState?.activeSince ?? sample.timestamp
       const alreadyTriggered = previousState?.triggered ?? false
       const durationSatisfied = (now.getTime() - since.getTime()) / 1000 >= rule.duration
       const matched = durationSatisfied && !alreadyTriggered
@@ -128,7 +127,7 @@ export class RuleEngine {
 export function createEvent(rule: Rule, organizationId: string, deviceId: string, sample: MetricSample, id: string = crypto.randomUUID()): Event {
   validateRule(rule)
   validateMetricSample(sample)
-  if (!organizationId.trim() || !deviceId.trim()) throw new Error('Organization and device are required')
+  if (!organizationId.trim() || !deviceId.trim()) throw new ValidationError('Organization and device are required')
   const now = sample.timestamp
   return { id, organizationId, deviceId, ruleId: rule.id, severity: rule.severity, status: 'OPEN', title: rule.name, message: `${sample.metric} ${rule.operator} ${rule.threshold} (observed: ${sample.value})`, createdAt: now, updatedAt: now }
 }

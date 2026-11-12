@@ -25,13 +25,13 @@ describe('Rule Engine', () => {
     expect((await engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, 'org:device:rule')).matched).toBe(false)
   })
 
-  it('reinicia a janela diante de amostra fora de ordem', async () => {
+  it('preserva a janela mais recente diante de amostra fora de ordem', async () => {
     const engine = new RuleEngine()
     await engine.evaluate(baseRule, sample(95, 60), sample(95, 60).timestamp, 'org:device:rule')
     const older = sample(95, 30)
     const evaluation = await engine.evaluate(baseRule, older, older.timestamp, 'org:device:rule')
     expect(evaluation.matched).toBe(false)
-    expect(evaluation.activeSince).toEqual(older.timestamp)
+    expect(evaluation.activeSince).toEqual(sample(95, 60).timestamp)
   })
 
   it('rejeita amostras com valor não finito ou timestamp inválido', async () => {
@@ -157,5 +157,16 @@ describe('Rule evaluation state store', () => {
     ])
 
     expect([first.matched, second.matched].filter(Boolean)).toHaveLength(1)
+  })
+})
+
+
+describe('stale normal samples', () => {
+  it('cannot rearm an already triggered alert', async () => {
+    const engine = new RuleEngine()
+    await engine.evaluate(baseRule, sample(95))
+    expect((await engine.evaluate(baseRule, sample(95, 60))).matched).toBe(true)
+    await engine.evaluate(baseRule, sample(10, 30))
+    expect((await engine.evaluate(baseRule, sample(95, 120))).matched).toBe(false)
   })
 })

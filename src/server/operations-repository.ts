@@ -1,8 +1,8 @@
-import { Pool, type PoolClient } from 'pg'
+import type { PoolClient } from 'pg'
+import { databasePool as pool } from './database.js'
 import type { Event } from '../domain/rules.js'
 import type { Action, ActionResult, Agent, Incident, Runbook, TimelineEntry } from '../domain/operations.js'
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 function eventRow(event: Event) {
   return [event.id, event.organizationId, event.deviceId, event.ruleId, event.severity, event.status, event.title, event.message, event.createdAt, event.updatedAt, event.resolvedAt ?? null]
@@ -23,7 +23,7 @@ export interface TelemetrySampleRecord {
 
 export async function saveTelemetrySample(sample: TelemetrySampleRecord) {
   const result = await pool.query(
-    'INSERT INTO telemetry_samples (id, organization_id, device_id, metric, value, recorded_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
+    'INSERT INTO telemetry_samples (id, organization_id, device_id, metric, value, recorded_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (organization_id, id) DO NOTHING',
     [sample.id, sample.organizationId, sample.deviceId, sample.metric, sample.value, sample.recordedAt],
   )
   return result.rowCount === 1
@@ -60,10 +60,10 @@ export async function saveIncident(incident: Incident) {
   )
 }
 
-export async function listIncidents(organizationId: string) {
+export async function listIncidents(organizationId: string, limit = 100, offset = 0) {
   const result = await pool.query(
-    'SELECT id, organization_id, event_ids, device_id, severity, status, title, created_at, updated_at FROM incidents WHERE organization_id = $1 ORDER BY created_at DESC',
-    [organizationId],
+    'SELECT id, organization_id, event_ids, device_id, severity, status, title, created_at, updated_at FROM incidents WHERE organization_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3',
+    [organizationId, limit, offset],
   )
   return result.rows
 }
@@ -89,7 +89,7 @@ export async function getIncidentDetails(organizationId: string, incidentId: str
     pool.query(
       'SELECT DISTINCT r.id, r.organization_id, r.name, r.steps FROM runbooks r JOIN actions a ON EXISTS (SELECT 1 FROM jsonb_array_elements(r.steps) AS step WHERE step->>\'id\' = a.runbook_step_id) JOIN incidents i ON i.id = a.incident_id WHERE a.incident_id = $1 AND i.organization_id = $2 AND r.organization_id = $2',
       [incidentId, organizationId],
-    ).catch(() => ({ rows: [] })),
+    ),
     pool.query(
       'SELECT ar.id, ar.action_id, ar.agent_id, ar.success, ar.output, ar.finished_at FROM action_results ar JOIN actions a ON a.id = ar.action_id JOIN incidents i ON i.id = a.incident_id WHERE a.incident_id = $1 AND i.organization_id = $2 ORDER BY ar.finished_at ASC',
       [incidentId, organizationId],
@@ -136,10 +136,10 @@ export async function saveAction(action: Action) {
   )
 }
 
-export async function saveAgent(agent: Agent, hostname = 'unknown', lastSeenAt = new Date()) {
+export async function saveAgent(agent: Agent, organizationId: string, hostname = 'unknown', lastSeenAt = new Date()) {
   await pool.query(
-    'INSERT INTO agents (id, device_id, version, connected, hostname, last_seen_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, connected = EXCLUDED.connected, hostname = EXCLUDED.hostname, last_seen_at = EXCLUDED.last_seen_at',
-    [agent.id, agent.deviceId, agent.version, agent.connected, hostname, lastSeenAt],
+    'INSERT INTO agents (id, organization_id, device_id, version, connected, hostname, last_seen_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, connected = EXCLUDED.connected, hostname = EXCLUDED.hostname, last_seen_at = EXCLUDED.last_seen_at',
+    [agent.id, organizationId, agent.deviceId, agent.version, agent.connected, hostname, lastSeenAt],
   )
 }
 

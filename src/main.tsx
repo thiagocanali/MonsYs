@@ -2,148 +2,122 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthPanel } from './AuthPanel.js'
 import { OrganizationSetup } from './OrganizationSetup.js'
-import type { MetricSample, Rule } from './domain/rules.js'
-import type { Incident } from './domain/operations.js'
 import './styles.css'
 
-const stages = [
-  ['01', 'Event', 'CPU acima de 90%'], ['02', 'Incident', 'INC-2048 aberto'], ['03', 'Runbook', 'RB-CPU-001 associado'], ['04', 'Action', 'Diagnóstico enfileirado'], ['05', 'Agent', 'agent-prod-07 conectado'], ['06', 'Result', 'Aguardando evidência'], ['07', 'Timeline', 'Tudo auditado']
-]
-const events = [
-  { severity: 'CRITICAL', title: 'CPU acima de 90% por 10 minutos', device: 'prod-web-07', time: 'agora', color: 'critical' },
-  { severity: 'WARNING', title: 'Latência elevada no gateway', device: 'edge-eu-02', time: 'há 4 min', color: 'warning' },
-  { severity: 'INFO', title: 'Backup concluído com sucesso', device: 'db-primary-01', time: 'há 12 min', color: 'info' }
-]
-const demoRule: Rule = { id: 'rule-cpu-90', name: 'CPU acima de 90% por 10 minutos', metric: 'cpu', operator: '>', threshold: 90, duration: 600, severity: 'CRITICAL', runbookId: 'RB-CPU-001' }
+interface Session { user: { name: string; email: string } }
+interface Organization { id: string; name: string; role: string }
+interface Incident { id: string; title: string; status: string; severity: string; device_id: string; created_at: string }
+interface IncidentDetails {
+  incident: Incident
+  timeline: Array<{ id: string; message: string; created_at: string }>
+  actions: Array<{ id: string; type: string; status: string }>
+  runbooks: Array<{ id: string; name: string }>
+  results: Array<{ id: string; success: boolean; output: string }>
+}
 
-function App() {
-  const [session, setSession] = React.useState<{ user: { name: string; email: string } } | null>(null)
-  const [authLoading, setAuthLoading] = React.useState(true)
-  const [active, setActive] = React.useState(0)
-  const [workflowState, setWorkflowState] = React.useState({ incident: 'INC-2048', result: 'Aguardando evidência', status: 'OPEN' })
+async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(url, { credentials: 'include', cache: 'no-store', signal })
+  if (!response.ok) throw new Error('Não foi possível carregar os dados. Tente novamente.')
+  return response.json() as Promise<T>
+}
+
+function Dashboard({ session, organizations, onSignOut }: { session: Session; organizations: Organization[]; onSignOut: () => Promise<void> }) {
+  const [organizationId, setOrganizationId] = React.useState(organizations[0].id)
   const [incidents, setIncidents] = React.useState<Incident[]>([])
-  const [selectedIncident, setSelectedIncident] = React.useState<any>(null)
-  const [loadingIncidents, setLoadingIncidents] = React.useState(false)
-  const [loadingDetails, setLoadingDetails] = React.useState(false)
-  const [organizationId, setOrganizationId] = React.useState<string | null>(null)
-  const [organizations, setOrganizations] = React.useState<Array<{ id: string; name: string; role: string }>>([])
+  const [details, setDetails] = React.useState<IncidentDetails | null>(null)
+  const [selectedId, setSelectedId] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [revision, setRevision] = React.useState(0)
+  const [signingOut, setSigningOut] = React.useState(false)
 
-  const loadSession = React.useCallback(async () => {
-    setAuthLoading(true)
-    try {
-      const response = await fetch('/api/auth/get-session', {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      })
-      if (!response.ok) {
-        setSession(null)
-        setOrganizations([])
-        setOrganizationId(null)
-        return
-      }
+  React.useEffect(() => {
+    const controller = new AbortController()
+    setLoading(true)
+    setError('')
+    void getJSON<Incident[]>(`/api/operations?organizationId=${encodeURIComponent(organizationId)}&limit=200`, controller.signal)
+      .then(items => { if (!controller.signal.aborted) setIncidents(items) })
+      .catch(() => { if (!controller.signal.aborted) setError('Não foi possível carregar os incidentes.') })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [organizationId, revision])
 
-      const payload = await response.json() as { user?: { name: string; email: string } } | null
-      if (!payload?.user) {
-        setSession(null)
-        setOrganizations([])
-        setOrganizationId(null)
-        return
-      }
+  React.useEffect(() => {
+    if (!selectedId) return
+    const controller = new AbortController()
+    setDetails(null)
+    void getJSON<IncidentDetails>(`/api/operations?organizationId=${encodeURIComponent(organizationId)}&incidentId=${encodeURIComponent(selectedId)}`, controller.signal)
+      .then(item => { if (!controller.signal.aborted) setDetails(item) })
+      .catch(() => { if (!controller.signal.aborted) setError('Não foi possível carregar os detalhes.') })
+    return () => controller.abort()
+  }, [organizationId, selectedId, revision])
 
-      setSession({ user: payload.user })
-      const membershipsResponse = await fetch('/api/organizations', {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      })
-      if (!membershipsResponse.ok) throw new Error('Não foi possível carregar as organizações')
-      const memberships = await membershipsResponse.json() as Array<{ id: string; name: string; role: string }>
-      setOrganizations(memberships)
-      setOrganizationId(current => memberships.some(organization => organization.id === current) ? current : memberships[0]?.id ?? null)
-    } catch {
-      setSession(null)
-      setOrganizations([])
-      setOrganizationId(null)
-    } finally {
-      setAuthLoading(false)
-    }
-  }, [])
-
-  React.useEffect(() => { void loadSession() }, [loadSession])
-
-  if (authLoading) return <div className="auth-shell"><p>Carregando sessão...</p></div>
-  if (!session) return <div className="auth-shell"><AuthPanel onAuthenticated={loadSession} /></div>
-  if (!organizationId) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
-
+  const selectOrganization = (id: string) => {
+    setIncidents([])
+    setSelectedId(null)
+    setDetails(null)
+    setOrganizationId(id)
+  }
   const signOut = async () => {
-    setAuthLoading(true)
-    try {
-      await fetch('/api/auth/sign-out', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      })
-    } finally {
-      await loadSession()
-    }
+    setSigningOut(true)
+    try { await onSignOut() }
+    catch { setError('Não foi possível sair. Tente novamente.') }
+    finally { setSigningOut(false) }
   }
-
-  const loadIncidents = async () => {
-    setLoadingIncidents(true)
-    try {
-      const response = await fetch(`/api/operations?organizationId=${encodeURIComponent(organizationId ?? '')}`)
-      if (!response.ok) throw new Error('Não foi possível carregar incidentes')
-      setIncidents(await response.json() as Incident[])
-    } finally {
-      setLoadingIncidents(false)
-    }
-  }
-  const loadIncidentDetails = async (incidentId: string) => {
-    setLoadingDetails(true)
-    try {
-      const response = await fetch(`/api/operations?organizationId=${encodeURIComponent(organizationId ?? '')}&incidentId=${encodeURIComponent(incidentId)}`)
-      if (!response.ok) throw new Error('Não foi possível carregar o incidente')
-      setSelectedIncident(await response.json())
-    } finally {
-      setLoadingDetails(false)
-    }
-  }
-  const runWorkflow = async () => {
-    const sample: MetricSample = { metric: 'cpu', value: 94, timestamp: new Date() }
-    try {
-      const response = await fetch('/api/operations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rule: demoRule, organizationId, deviceId: demoAgent.deviceId, sample }),
-      })
-      if (!response.ok) throw new Error('API indisponível')
-      const payload = await response.json() as { incident: Incident }
-      setWorkflowState({ incident: payload.incident.id, result: 'Evento persistido', status: payload.incident.status })
-      setActive(6)
-    } catch {
-      setWorkflowState({
-        incident: 'Não criado',
-        result: 'Falha ao conectar à API. Nenhuma ação foi executada.',
-        status: 'ERROR',
-      })
-      setActive(6)
-    }
-  }
+  const activeCount = incidents.filter(incident => !['RESOLVED', 'CLOSED'].includes(incident.status)).length
   return <div className="app">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">M</span><span>Mons<span>Ys</span></span></div>
-      <label className="workspace-selector"><span className="workspace-dot" /><select aria-label="Selecionar organização" value={organizationId} onChange={event => setOrganizationId(event.target.value)}>{organizations.map(organization => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select><span className="chevron">⌄</span></label>
-      <nav><p className="nav-label">MONITORAMENTO</p><a className="active">Overview <b>3</b></a><a>Dispositivos <span>24</span></a><a>Eventos</a><a>Regras</a><p className="nav-label">OPERAÇÕES</p><a>Incidentes <b>2</b></a><a>Runbooks</a><a>Timeline</a></nav>
-      <div className="sidebar-bottom"><div className="status"><i /> Todos os sistemas operacionais</div><div className="profile"><div className="avatar">{session.user.name.slice(0, 2).toUpperCase()}</div><div><strong>{session.user.name}</strong><small>{organizations.find(organization => organization.id === organizationId)?.role ?? 'Membro'}</small></div><button className="profile-action" onClick={signOut} aria-label="Sair">Sair</button></div></div>
+      <label className="workspace-selector"><select aria-label="Selecionar organização" value={organizationId} onChange={event => selectOrganization(event.target.value)}>{organizations.map(organization => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
+      <nav><p className="nav-label">OPERAÇÕES</p><a href="#incidents" className="active">Incidentes</a></nav>
+      <div className="sidebar-bottom"><div className="profile"><div className="avatar">{session.user.name.slice(0, 2).toUpperCase()}</div><div><strong>{session.user.name}</strong><small>{organizations.find(organization => organization.id === organizationId)?.role}</small></div><button className="profile-action" disabled={signingOut} onClick={() => void signOut()}>Sair</button></div></div>
     </aside>
     <main>
-      <header><div><p className="eyebrow">MONITORAMENTO / OVERVIEW</p><h1>Control room</h1><p className="subtitle">Transforme sinais técnicos em ações operacionais.</p></div><div className="header-actions"><button className="icon-button">⌘ K</button><button className="ghost" onClick={loadIncidents}>{loadingIncidents ? 'Carregando...' : 'Atualizar incidentes'}</button><button className="primary" onClick={runWorkflow}>Executar fluxo</button></div></header>
-      <section className="metric-grid"><div className="metric-card"><span>Eventos nas últimas 24h</span><strong>128</strong><em className="up">↑ 18.4%</em><div className="sparkline"><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/></div></div><div className="metric-card"><span>Incidentes ativos</span><strong>03</strong><em className="down">↓ 12.0%</em><div className="bars"><i/><i/><i/><i/><i/><i/><i/><i/></div></div><div className="metric-card"><span>Tempo médio de resolução</span><strong>14<span>m</span> 32<span>s</span></strong><em className="up">↓ 22.8%</em><div className="line-chart">╱╲╱╲╱╲╱╲╱</div></div><div className="metric-card"><span>Agents conectados</span><strong>24<span>/24</span></strong><em className="stable">● estável</em><div className="connection"><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/><i/></div></div></section>
-      <section className="flow-card"><div className="section-heading"><div><p className="eyebrow">OPERATIONAL FLOW</p><h2>Event to resolution</h2></div><span className="live"><i/> LIVE</span></div><div className="flow">{stages.map(([number, label, desc], i) => <button key={label} className={`stage ${i === active ? 'selected' : ''}`} onClick={() => setActive(i)}><span className="stage-number">{number}</span><strong>{label}</strong><small>{desc}</small>{i < stages.length - 1 && <span className="arrow">→</span>}</button>)}</div></section>
-      <div className="content-grid"><section className="events-card"><div className="section-heading"><div><p className="eyebrow">INCOMING SIGNALS</p><h2>Eventos recentes</h2></div><button className="link">Ver todos →</button></div><div className="table-head"><span>SEVERIDADE / EVENTO</span><span>DISPOSITIVO</span><span>RECEBIDO</span><span>STATUS</span></div>{events.map(e => <div className="event-row" key={e.title}><span className={`severity ${e.color}`}><i/>{e.severity}</span><strong>{e.title}</strong><span className="muted">{e.device}</span><span className="muted">{e.time}</span><span className={`pill ${e.color}`}>{e.color === 'critical' ? 'Incidente criado' : e.color === 'warning' ? 'Avaliando' : 'Resolvido'}</span></div>)}{incidents.length > 0 && <div className="persisted-summary"><strong>{incidents.length} incidente(s) persistido(s)</strong><span>{incidents[0].title} · {incidents[0].status}</span><button className="link" onClick={() => loadIncidentDetails(incidents[0].id)}>{loadingDetails ? 'Carregando...' : 'Ver detalhes →'}</button></div>}{selectedIncident && <div className="incident-detail" role="status"><div><span className={`pill ${selectedIncident.incident.status === 'RESOLVED' ? 'info' : 'critical'}`}>{selectedIncident.incident.status}</span><strong>{selectedIncident.incident.title}</strong></div><span>{selectedIncident.runbooks?.length ?? 0} runbook(s) · {selectedIncident.actions?.length ?? 0} ação(ões) · {selectedIncident.timeline?.length ?? 0} eventos na timeline</span></div>}</section><section className="timeline-card"><div className="section-heading"><div><p className="eyebrow">ACTIVITY LOG</p><h2>Timeline</h2></div><button className="link">Abrir →</button></div><div className="timeline"><div><i className="dot critical"/><p><b>Incidente criado</b><small>{workflowState.incident} · há 2 min</small></p></div><div><i className="dot blue"/><p><b>Runbook associado</b><small>RB-CPU-001 · há 2 min</small></p></div><div><i className="dot purple"/><p><b>Ação enfileirada</b><small>GET_TOP_PROCESSES · {workflowState.status === 'OPEN' ? 'há 1 min' : 'concluída agora'}</small></p></div><div><i className="dot green"/><p><b>Agent conectado</b><small>agent-prod-07 · {workflowState.result}</small></p></div></div></section></div>
+      <header><div><p className="eyebrow">MONITORAMENTO / INCIDENTES</p><h1>Control room</h1><p className="subtitle">Acompanhe os incidentes da sua organização.</p></div><button className="primary" disabled={loading} onClick={() => setRevision(value => value + 1)}>{loading ? 'Carregando...' : 'Atualizar'}</button></header>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <section className="metric-grid"><div className="metric-card"><span>Incidentes carregados (até 200)</span><strong>{loading || error ? '—' : incidents.length}</strong></div><div className="metric-card"><span>Ativos nesta lista</span><strong>{loading || error ? '—' : activeCount}</strong></div></section>
+      <div className="content-grid"><section id="incidents" className="events-card" aria-busy={loading}><div className="section-heading"><h2>Incidentes recentes</h2></div>
+        {!loading && !error && incidents.length === 0 && <p>Nenhum incidente registrado nesta organização.</p>}
+        {incidents.map(incident => <article className="persisted-summary" key={incident.id}><strong>{incident.title}</strong><span>{incident.device_id} · {incident.severity} · {incident.status}</span><time dateTime={incident.created_at}>{new Date(incident.created_at).toLocaleString('pt-BR')}</time><button className="link" onClick={() => { if (selectedId !== incident.id) { setDetails(null); setSelectedId(incident.id) } }}>Ver detalhes →</button></article>)}
+      </section><section className="timeline-card"><div className="section-heading"><h2>Detalhes e timeline</h2></div>
+        {!selectedId && <p>Selecione um incidente para consultar as evidências.</p>}
+        {selectedId && !details && !error && <p role="status">Carregando detalhes...</p>}
+        {details && <><h3>{details.incident.title}</h3><p>{details.incident.status} · {details.actions.length} ações · {details.runbooks.length} runbooks</p><ol>{details.timeline.map(entry => <li key={entry.id}>{entry.message} <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString('pt-BR')}</time></li>)}</ol>{details.results.map(result => <p key={result.id}>{result.success ? 'Sucesso' : 'Falha'}: {result.output}</p>)}</>}
+      </section></div>
     </main>
   </div>
+}
+
+function App() {
+  const [session, setSession] = React.useState<Session | null>(null)
+  const [organizations, setOrganizations] = React.useState<Organization[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const loadSession = React.useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const current = await getJSON<Session | null>('/api/auth/get-session')
+      const memberships = current?.user ? await getJSON<Organization[]>('/api/organizations') : []
+      setSession(current)
+      setOrganizations(memberships)
+    } catch { setError('Não foi possível carregar sua sessão. Tente novamente.') }
+    finally { setLoading(false) }
+  }, [])
+  React.useEffect(() => { void loadSession() }, [loadSession])
+  const signOut = async () => {
+    const response = await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
+    if (!response.ok) throw new Error('Sign-out failed')
+    const remaining = await getJSON<Session | null>('/api/auth/get-session')
+    if (remaining?.user) throw new Error('Session is still active')
+    setSession(null)
+    setOrganizations([])
+  }
+  if (loading) return <div className="auth-shell"><p role="status">Carregando sessão...</p></div>
+  if (error) return <div className="auth-shell"><section className="auth-panel"><p role="alert">{error}</p><button onClick={() => void loadSession()}>Tentar novamente</button></section></div>
+  if (!session) return <div className="auth-shell"><AuthPanel onAuthenticated={loadSession} /></div>
+  if (organizations.length === 0) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
+  return <Dashboard session={session} organizations={organizations} onSignOut={signOut} />
 }
 
 createRoot(document.getElementById('root')!).render(<App />)
