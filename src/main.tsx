@@ -103,7 +103,7 @@ function App() {
       setSession(current)
       if (!current?.user) {
         setOrganizations([])
-        return
+        return false
       }
       try {
         const memberships = await getJSON<Organization[]>('/api/organizations')
@@ -112,8 +112,12 @@ function App() {
         setOrganizations([])
         setOrganizationError('Sua sessão está ativa, mas não foi possível carregar as organizações. Tente novamente.')
       }
+      return true
     } catch {
+      setSession(null)
+      setOrganizations([])
       setError('Não foi possível verificar sua sessão. Tente novamente.')
+      return false
     } finally { setLoading(false) }
   }, [])
   React.useEffect(() => { void loadSession() }, [loadSession])
@@ -129,7 +133,7 @@ function App() {
   if (error) return <div className="auth-shell"><section className="auth-panel"><p role="alert">{error}</p><button onClick={() => void loadSession()}>Tentar novamente</button></section></div>
   if (!session) return <div className="auth-shell"><AuthPanel onAuthenticated={loadSession} /></div>
   if (organizationError) return <div className="auth-shell"><section className="auth-panel"><p role="alert">{organizationError}</p><button className="primary" onClick={() => void loadSession()}>Tentar novamente</button><button className="link" onClick={() => void signOut().catch(() => setOrganizationError('Não foi possível encerrar a sessão. Tente novamente.'))}>Sair</button></section></div>
-  if (organizations.length === 0) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
+  if (organizations.length === 0) return <div className="auth-shell"><OrganizationSetup onCreated={async () => { await loadSession() }} /></div>
   return <Dashboard session={session} organizations={organizations} onSignOut={signOut} />
 }
 
