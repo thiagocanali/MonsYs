@@ -2,9 +2,10 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { AuthPanel } from './AuthPanel.js'
 import { OrganizationSetup } from './OrganizationSetup.js'
+import { fetchBrowserSession, revokeBrowserSession, type BrowserSession } from './auth-session-client.js'
 import './styles.css'
 
-interface Session { user: { name: string; email: string } }
+type Session = BrowserSession
 interface Organization { id: string; name: string; role: string }
 interface Incident { id: string; title: string; status: string; severity: string; device_id: string; created_at: string }
 interface IncidentDetails {
@@ -99,7 +100,7 @@ function App() {
     setError('')
     setOrganizationError('')
     try {
-      const current = await getJSON<Session | null>('/api/auth/get-session')
+      const current = await fetchBrowserSession()
       setSession(current)
       if (!current?.user) {
         setOrganizations([])
@@ -122,12 +123,10 @@ function App() {
   }, [])
   React.useEffect(() => { void loadSession() }, [loadSession])
   const signOut = async () => {
-    const response = await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
-    if (!response.ok) throw new Error('Sign-out failed')
-    const remaining = await getJSON<Session | null>('/api/auth/get-session')
-    if (remaining?.user) throw new Error('Session is still active')
+    await revokeBrowserSession()
     setSession(null)
     setOrganizations([])
+    setOrganizationError('')
   }
   if (loading) return <div className="auth-shell"><p role="status">Carregando sessão...</p></div>
   if (error) return <div className="auth-shell"><section className="auth-panel"><p role="alert">{error}</p><button onClick={() => void loadSession()}>Tentar novamente</button></section></div>
