@@ -1,4 +1,5 @@
 import React from 'react'
+import { validateAuthInput } from './auth-validation.js'
 
 interface AuthPanelProps {
   onAuthenticated: () => Promise<void>
@@ -46,18 +47,9 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
     const normalizedEmail = email.trim().toLowerCase()
     const normalizedName = name.trim()
 
-    if (!normalizedEmail) {
-      setError('Informe seu email.')
-      setPending(false)
-      return
-    }
-    if (password.length < 8) {
-      setError('A senha precisa ter pelo menos 8 caracteres.')
-      setPending(false)
-      return
-    }
-    if (mode === 'sign-up' && !normalizedName) {
-      setError('Informe seu nome.')
+    const validationError = validateAuthInput({ mode, email: normalizedEmail, password, name: normalizedName })
+    if (validationError) {
+      setError(validationError)
       setPending(false)
       return
     }
