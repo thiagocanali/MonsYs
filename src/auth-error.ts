@@ -8,6 +8,7 @@ export function getAuthError(payload: AuthErrorPayload | null, mode: AuthMode, s
 
   const message = [payload?.code, payload?.message, payload?.error].filter(Boolean).join(' ').toLowerCase()
   if (mode === 'sign-in') {
+    if (message.includes('invalid_email_or_password') || message.includes('invalid email or password')) return 'Não foi possível entrar. Confira seu email e senha.'
     if (message.includes('invalid_email') || message.includes('invalid email format')) return 'Informe um email válido.'
     return 'Não foi possível entrar. Confira seu email e senha.'
   }
