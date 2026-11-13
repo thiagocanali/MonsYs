@@ -2,7 +2,7 @@ import React from 'react'
 import { validateAuthInput } from './auth-validation.js'
 
 interface AuthPanelProps {
-  onAuthenticated: () => Promise<void>
+  onAuthenticated: () => Promise<boolean>
 }
 
 type AuthErrorPayload = {
@@ -73,7 +73,10 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
         return
       }
 
-      await onAuthenticated()
+      const sessionConfirmed = await onAuthenticated()
+      if (!sessionConfirmed) {
+        setError('Não foi possível confirmar sua sessão. Tente novamente.')
+      }
     } catch {
       setError('Não foi possível conectar ao serviço de autenticação.')
     } finally {
