@@ -93,16 +93,28 @@ function App() {
   const [organizations, setOrganizations] = React.useState<Organization[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState('')
+  const [organizationError, setOrganizationError] = React.useState('')
   const loadSession = React.useCallback(async () => {
     setLoading(true)
     setError('')
+    setOrganizationError('')
     try {
       const current = await getJSON<Session | null>('/api/auth/get-session')
-      const memberships = current?.user ? await getJSON<Organization[]>('/api/organizations') : []
       setSession(current)
-      setOrganizations(memberships)
-    } catch { setError('Não foi possível carregar sua sessão. Tente novamente.') }
-    finally { setLoading(false) }
+      if (!current?.user) {
+        setOrganizations([])
+        return
+      }
+      try {
+        const memberships = await getJSON<Organization[]>('/api/organizations')
+        setOrganizations(memberships)
+      } catch {
+        setOrganizations([])
+        setOrganizationError('Sua sessão está ativa, mas não foi possível carregar as organizações. Tente novamente.')
+      }
+    } catch {
+      setError('Não foi possível verificar sua sessão. Tente novamente.')
+    } finally { setLoading(false) }
   }, [])
   React.useEffect(() => { void loadSession() }, [loadSession])
   const signOut = async () => {
@@ -116,6 +128,7 @@ function App() {
   if (loading) return <div className="auth-shell"><p role="status">Carregando sessão...</p></div>
   if (error) return <div className="auth-shell"><section className="auth-panel"><p role="alert">{error}</p><button onClick={() => void loadSession()}>Tentar novamente</button></section></div>
   if (!session) return <div className="auth-shell"><AuthPanel onAuthenticated={loadSession} /></div>
+  if (organizationError) return <div className="auth-shell"><section className="auth-panel"><p role="alert">{organizationError}</p><button className="primary" onClick={() => void loadSession()}>Tentar novamente</button></section></div>
   if (organizations.length === 0) return <div className="auth-shell"><OrganizationSetup onCreated={loadSession} /></div>
   return <Dashboard session={session} organizations={organizations} onSignOut={signOut} />
 }
