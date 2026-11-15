@@ -9,6 +9,7 @@ type StoredState = {
 }
 
 function decodeState(value: unknown): RuleEvaluationState | undefined {
+  if (value === undefined || value === null) return undefined
   if (typeof value === 'string') {
     try { value = JSON.parse(value) as unknown }
     catch { throw new Error('Persisted rule evaluation state is invalid JSON') }
