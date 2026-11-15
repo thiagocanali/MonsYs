@@ -6,7 +6,7 @@ Console de monitoramento multiempresa em React/TypeScript, com APIs Node.js na V
 
 Requer Node.js 24 e PostgreSQL 17. Instale com `npm ci`, copie `.env.example` para `.env.local`, configure a conexão e gere um `BETTER_AUTH_SECRET` aleatório de pelo menos 32 caracteres. Segredos ficam somente no ambiente.
 
-Em um banco **novo e descartável**, aplique os arquivos de `supabase/migrations/` em ordem. O primeiro arquivo reproduz a migração `auth_foundation` recuperada do histórico do Supabase. Para bancos existentes, compare estrutura e histórico antes de executar SQL; não reaplique a fundação.
+Em um banco **novo e descartável**, aplique os arquivos de `database/migrations/` em ordem. O primeiro arquivo reproduz a migração `auth_foundation` recuperada do histórico do Supabase. Para bancos existentes, compare estrutura e histórico antes de executar SQL; não reaplique a fundação.
 
 `npm run dev` inicia interface e APIs em `http://localhost:3000`. O servidor de desenvolvimento aceita conexões apenas locais. Cadastre uma conta e crie uma organização. O painel mostra os incidentes reais dessa organização e suas timelines.
 
@@ -29,6 +29,6 @@ O teste integrado recusa hosts remotos e nunca utiliza implicitamente `DATABASE_
 
 A Vercel compila o frontend e publica os endpoints de `api/` com handlers Web (`fetch`). A configuração encaminha `/api/auth/*` ao Better Auth. `DATABASE_URL`, `BETTER_AUTH_SECRET` e a URL canônica devem ser configurados no servidor; em previews, use a URL do próprio preview.
 
-A inspeção de 11/11/2026 encontrou **uma integração Neon na Vercel e um projeto MonsYs separado no Supabase**. A origem do `DATABASE_URL` precisa ser conciliada antes de aplicar migrações no ambiente real. As novas migrações foram testadas localmente; não presuma que já foram executadas nos provedores.
+Em 15/11/2026 foi criado o projeto Neon independente `noisy-feather-61781482` (PostgreSQL 17, região `aws-sa-east-1`, banco `monsys`), com as três migrations da aplicação aplicadas e 16 tabelas com RLS habilitado. **A conexão de produção da Vercel ainda não foi alterada nem validada contra esse novo banco.** Consulte [migração para Neon](docs/neon-migration.md) antes de configurar qualquer ambiente.
 
 Consulte a [revisão técnica e backlog priorizado](docs/engineering-review-2026-11-11.md) para evidências, limitações e plano de implantação.
