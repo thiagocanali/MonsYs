@@ -18,6 +18,21 @@ describe('browser session lifecycle', () => {
     }
   })
 
+  it('does not authenticate on invalid JSON or network errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{invalid json', { status: 200 })))
+    await expect(fetchBrowserSession()).rejects.toThrow()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Network unavailable')))
+    await expect(fetchBrowserSession()).rejects.toThrow('Network unavailable')
+  })
+
+  it('does not report logout success if session recheck fails', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(Response.json({ success: true }))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+    vi.stubGlobal('fetch', request)
+    await expect(revokeBrowserSession()).rejects.toThrow('Session lookup failed')
+  })
+
   it('returns null for an unauthenticated session', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(null)))
     expect(await fetchBrowserSession()).toBeNull()
