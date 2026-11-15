@@ -1,6 +1,6 @@
-# Rule evaluation state store contract
+# Rule evaluation state store
 
-**Status:** application-level atomicity contract; no PostgreSQL migration or live database change has been made.
+**Status:** PostgreSQL adapter implemented on branch `feat/postgres-rule-evaluation-state`; CI and integration validation are pending.
 
 ## Why this contract exists
 
@@ -20,19 +20,30 @@ The RuleEvaluationStateStore transact(scopeKey, operation) contract requires the
 
 The in-memory adapter serializes by key and is suitable for deterministic tests and single-process development only. It is not durable and does not coordinate separate serverless instances.
 
-## PostgreSQL adapter requirements (future implementation)
+## PostgreSQL implementation
 
-A production adapter should use a dedicated table with a primary key on scope_key and a JSONB or typed-column representation of active_since, last_sample_at, and triggered.
+The migration `20261115190000_rule_evaluation_state.sql` creates a backend-only table with a primary key on scope_key and a JSONB state containing active_since, last_sample_at and triggered values.
 
-Within one database transaction, it must:
-1. Acquire a transaction-scoped advisory lock derived from the exact scope key. Hash collisions may cause extra waiting, but the primary key remains the correctness boundary.
-2. Read the current row.
-3. Execute the state transition.
-4. Upsert the returned state or delete the row when the transition resets it.
-5. Commit before returning the evaluation result.
+The PostgreSQL adapter:
+1. Opens a database transaction.
+2. Acquires a transaction-scoped advisory lock derived from the exact scope key.
+3. Reads the latest state.
+4. Executes the domain state transition.
+5. Upserts the returned state or deletes the row when the transition resets.
+6. Commits before returning the evaluation result.
 
-A unique primary key on scope_key is mandatory. The adapter must not use process-local mutexes as its cross-instance concurrency mechanism.
+Hash collisions can cause extra waiting, but the table primary key remains the correctness boundary. The adapter does not use process-local mutexes as its cross-instance concurrency mechanism. If rollback fails, the connection is discarded instead of returned to the pool in an uncertain state.
 
-## Deployment gate
+The operations API now uses the PostgreSQL adapter by default. Unit tests can continue using the in-memory adapter explicitly.
 
-Do not implement or apply the production adapter until the live database inventory is reviewed and an additive migration has been tested against a disposable PostgreSQL database. The default RuleEngine remains in-memory until that work is completed; therefore cross-instance durability is not yet available.
+## Validation and limitations
+
+The integration test applies the ordered migrations to a disposable local PostgreSQL database and verifies:
+- persistence across independently constructed engine/store instances;
+- serialization of concurrent evaluations so only one alert is triggered;
+- recovery of the triggered latch after constructing a new engine instance;
+- state reset through clear().
+
+This implementation makes rule evaluation state durable and cross-instance serialized. It does **not yet** make telemetry insertion, rule-state transition, event creation and incident creation one atomic transaction. That remains a separate reliability task: an error after the telemetry insert can still leave a sample without its corresponding event/incident, and idempotent retry handling must be designed before claiming end-to-end transactional ingestion.
+
+Do not apply the new migration to a live or existing database until its schema and migration history have been reconciled. The Neon project created for development is not automatically the database used by the Vercel production runtime.
