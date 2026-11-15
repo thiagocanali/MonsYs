@@ -42,12 +42,19 @@ Antes do cutover: inspecionar os metadados da conexão de produção existente, 
 | Prioridade | Tarefa | Estado | Evidência / dependência | Próxima ação |
 |---|---|---|---|---|
 | P0 | Schema PostgreSQL Neon | Validada | 16 tabelas, 16 RLS, 16 FKs, 37 índices, zero grants públicos | Preservar schema |
-| P0 | Isolamento entre dois usuários | Em andamento | Teste integrado incluído na PR #40 | Exigir CI do HEAD atual |
+| P0 | Isolamento entre dois usuários | Em andamento | Teste integrado ampliado com acesso do proprietário e negação de acesso anônimo; erro de sintaxe do CI #69 corrigido | Exigir CI do HEAD atual |
 | P0 | API de organizações resiliente | Validada no HEAD `3417b0e7` da PR #41 | CI #67 aprovado | Revisão e merge autorizado |
 | P0 | Conexão da aplicação ao Neon novo | Bloqueada | Integração Vercel atual não conciliada; produção não autorizada | Validar staging sem alterar produção |
 | P1 | Evitar divergência das migrations | Em andamento | Teste de paridade adicionado no commit `9a9041ec` | Conferir CI do HEAD |
 | P1 | Autenticação e permissões no Neon remoto | Pendente | Não executar testes destrutivos ou de cadastro em produção | Criar ambiente de homologação isolado |
 | P1 | Quota de previews Vercel | Em andamento | Status Vercel `build-rate-limit`; ignored build já configurado | Validar política sem forçar deploy |
+
+## Execução em lotes — ciclo de 15/11/2026
+1. Revisadas PRs #40/#41 e execução #69: falha de typecheck por parênteses ausentes no teste de isolamento; corrigida na branch da PR #40.
+2. Auditado o Neon remoto com SQL somente leitura: 16 tabelas, 16 tabelas com RLS, 16 FKs e 37 índices; sem mudança de dados.
+3. Ampliado teste de isolamento com acesso positivo do proprietário e rejeição de listagem anônima.
+4. Reforçada a verificação de RLS para exigir explicitamente 16 tabelas (evita aprovação em schema vazio).
+5. Adicionado teste de paridade de migrations na PR #40; execução final depende de CI no HEAD mais recente.
 
 ## Pendências
 1. Conciliar a integração Neon preexistente na Vercel com o projeto exclusivo recém-criado; não sobrescrever automaticamente `DATABASE_URL`.
