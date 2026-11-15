@@ -57,6 +57,9 @@ Antes do cutover: inspecionar os metadados da conexão de produção existente, 
 5. Adicionado teste de paridade de migrations na PR #40; execução final depende de CI no HEAD mais recente.
 
 ## Retomada — ciclo de 15/11/2026 (continuação)
+- CI #71 foi concluído com sucesso para o commit `3456da55`; isso **não** valida commits posteriores.
+- HEAD atual da PR #40: `644a1b7e`; HEAD atual da PR #41: `8ab67ed4`. Na última consulta, nenhum workflow foi associado a esses dois commits; ambos permanecem abertos e mergeáveis.
+- PR #41 agora descarta a conexão PostgreSQL do pool quando o `ROLLBACK` falha, para não devolver ao pool uma conexão em estado transacional incerto. Teste correspondente exige `client.release(rollbackFailure)`.
 - PR #40: integração local reforçada para rejeitar schemas PostgreSQL parcialmente inicializados; commit `082a9019`.
 - O CI do HEAD `5752832c` não apareceu na consulta de execuções; novo HEAD requer CI antes de qualquer merge.
 - Bloqueio de homologação: nenhuma credencial de ambiente isolado foi configurada na aplicação para o novo projeto Neon. Não reutilizar a URL de produção nem gravar secrets no repositório.
