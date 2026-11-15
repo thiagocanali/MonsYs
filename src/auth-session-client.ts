@@ -7,7 +7,7 @@ export async function fetchBrowserSession(): Promise<BrowserSession | null> {
   if (session === null) return null
   if (!session || typeof session !== 'object' || Array.isArray(session) || !('user' in session)) throw new Error('Invalid session response')
   const user = session.user
-  if (!user || typeof user !== 'object' || Array.isArray(user) || !('name' in user) || !('email' in user) || typeof user.name !== 'string' || !user.name.trim() || typeof user.email !== 'string' || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(user.email)) {
+  if (!user || typeof user !== 'object' || Array.isArray(user) || !('name' in user) || !('email' in user) || typeof user.name !== 'string' || !user.name.trim() || typeof user.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
     throw new Error('Invalid session user')
   }
   return session as BrowserSession
