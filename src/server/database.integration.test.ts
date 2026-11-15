@@ -120,7 +120,7 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     expect(secondList.status).toBe(200)
     expect((await secondList.json()).some((item: { id: string }) => item.id === firstId)).toBe(false)
     expect((await agents(request('agents', { organizationId: firstId, deviceId: 'foreign-device' }, secondCookie))).status).toBe(403)
-    expect((await operations(request(`operations?organizationId=${firstId}`, undefined, secondCookie)).status).toBe(403)
+    expect((await operations(request(`operations?organizationId=${firstId}`, undefined, secondCookie))).status).toBe(403)
   })
 
   it('blocks browser database roles including sensitive auth records', async () => {
