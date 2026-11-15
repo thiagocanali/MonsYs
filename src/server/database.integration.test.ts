@@ -11,6 +11,9 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
   let agents: typeof import('../../api/agents.js')['handler']
   let operations: typeof import('../../api/operations.js')['handler']
   let close: () => Promise<void>
+  let PostgresRuleEvaluationStateStore: typeof import('./rule-evaluation-state-store.js').PostgresRuleEvaluationStateStore
+  let RuleEngine: typeof import('../domain/rules.js').RuleEngine
+  let createRuleEvaluationScopeKey: typeof import('../domain/rules.js').createRuleEvaluationScopeKey
   const origin = 'http://localhost:3000'
   let cookie = ''
   let organizationId = ''
@@ -47,6 +50,8 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     const authModule = await import('./auth.js')
     auth = authModule.auth
     close = () => authModule.authPool.end()
+    ;({ PostgresRuleEvaluationStateStore } = await import('./rule-evaluation-state-store.js'))
+    ;({ RuleEngine, createRuleEvaluationScopeKey } = await import('../domain/rules.js'))
     organizations = (await import('../../api/organizations.js')).handler
     agents = (await import('../../api/agents.js')).handler
     operations = (await import('../../api/operations.js')).handler
@@ -130,9 +135,51 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     expect((await operations(request(`operations?organizationId=${firstId}`, undefined, secondCookie))).status).toBe(403)
   })
 
+
+  it('persists and serializes rule evaluation state across independent engine instances', async () => {
+    const storeA = new PostgresRuleEvaluationStateStore(pool)
+    const storeB = new PostgresRuleEvaluationStateStore(pool)
+    const engineA = new RuleEngine(storeA)
+    const engineB = new RuleEngine(storeB)
+    const scope = createRuleEvaluationScopeKey(organizationId, 'durable-device', 'cpu-high')
+    const rule = { id: 'cpu-high', name: 'CPU alta', metric: 'cpu_usage', operator: '>' as const, threshold: 90, duration: 60, severity: 'WARNING' as const }
+    const start = new Date('2026-11-15T00:00:00.000Z')
+    const first = { metric: 'cpu_usage', value: 95, timestamp: start }
+    await engineA.evaluate(rule, first, start, scope)
+
+    const thresholdTime = new Date(start.getTime() + 60_000)
+    const threshold = { metric: 'cpu_usage', value: 95, timestamp: thresholdTime }
+    const concurrent = await Promise.all([
+      engineA.evaluate(rule, threshold, thresholdTime, scope),
+      engineB.evaluate(rule, threshold, thresholdTime, scope),
+    ])
+    expect(concurrent.filter(result => result.matched)).toHaveLength(1)
+
+    const restartedEngine = new RuleEngine(new PostgresRuleEvaluationStateStore(pool))
+    const afterRestartTime = new Date(start.getTime() + 90_000)
+    const afterRestart = await restartedEngine.evaluate(
+      rule,
+      { metric: 'cpu_usage', value: 95, timestamp: afterRestartTime },
+      afterRestartTime,
+      scope,
+    )
+    expect(afterRestart.matched).toBe(false)
+    expect(afterRestart.reason).toContain('already triggered')
+
+    await storeB.clear(scope)
+    const resetTime = new Date(start.getTime() + 120_000)
+    const afterClear = await engineA.evaluate(
+      rule,
+      { metric: 'cpu_usage', value: 95, timestamp: resetTime },
+      resetTime,
+      scope,
+    )
+    expect(afterClear.matched).toBe(false)
+  })
+
   it('blocks browser database roles including sensitive auth records', async () => {
     const tables = await pool.query("SELECT relname, relrowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='public' AND relkind='r'")
-    expect(tables.rows).toHaveLength(16)
+    expect(tables.rows).toHaveLength(17)
     expect(tables.rows.every(table => table.relrowsecurity)).toBe(true)
     const publicGrants = await pool.query(`
       SELECT table_name, grantee, privilege_type
