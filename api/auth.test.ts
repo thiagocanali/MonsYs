@@ -23,7 +23,7 @@ describe('authentication API boundary', () => {
   })
 
   it('returns a safe non-cacheable 503 when the auth handler throws', async () => {
-    handleAuth.mockRejectedValue(new Error('DATABASE_URL=secret-value connection failed'))
+    handleAuth.mockImplementationOnce(async () => { throw new Error('DATABASE_URL=secret-value connection failed') })
     const response = await handler(new Request('https://monsys.example/api/auth/get-session'))
     expect(response.status).toBe(503)
     expect(response.headers.get('Cache-Control')).toBe('no-store')
