@@ -32,6 +32,11 @@ Executar `npm ci`, `npm run typecheck`, `npm test`, `npm audit --audit-level=mod
 
 Antes do cutover: inspecionar os metadados da conexão de produção existente, configurar secrets por ambiente sem revelar valores, testar cadastro, login, logout, organizações, isolamento entre usuários, agentes, incidentes e healthcheck num ambiente isolado. Exigir autorização para alterar produção. Manter a configuração anterior disponível para rollback e preservar o banco original.
 
+## Registro de validação de 15/11/2026
+- CI #63: aprovado no commit `45417abc`, incluindo migrations neutras e validações de organização no PostgreSQL descartável.
+- Teste adicional de isolamento entre dois usuários reais de Better Auth implementado na branch da PR #40; requer CI do HEAD que contém o teste para ser considerado validado.
+- Nenhum teste de ponta a ponta foi executado contra o Neon remoto. O teste de integração bloqueia deliberadamente bancos que não sejam `localhost`/`127.0.0.1`.
+
 ## Pendências
 1. Conciliar a integração Neon preexistente na Vercel com o projeto exclusivo recém-criado; não sobrescrever automaticamente `DATABASE_URL`.
 2. Testar conectividade SSL, operações CRUD e autorização real no novo banco com credenciais de ambiente adequadas.
