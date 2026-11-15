@@ -95,6 +95,29 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     expect((await operations(request(`operations?organizationId=${organizationId}`, undefined, ''))).status).toBe(401)
   })
 
+  it('isolates organization memberships between independently authenticated users', async () => {
+    const suffix = crypto.randomUUID()
+    const first = await auth.handler(request('auth/sign-up/email', {
+      name: 'Tenant A', email: `a-${suffix}@example.test`, password: 'integration-password-123',
+    }, ''))
+    expect(first.status).toBe(200)
+    const firstCookie = first.headers.getSetCookie().map(value => value.split(';')[0]).join('; ')
+    const firstOrg = await organizations(request('organizations', { name: 'Tenant A', slug: `a-${suffix}` }, firstCookie))
+    expect(firstOrg.status).toBe(201)
+    const firstId = (await firstOrg.json()).id
+
+    const second = await auth.handler(request('auth/sign-up/email', {
+      name: 'Tenant B', email: `b-${suffix}@example.test`, password: 'integration-password-123',
+    }, ''))
+    expect(second.status).toBe(200)
+    const secondCookie = second.headers.getSetCookie().map(value => value.split(';')[0]).join('; ')
+    const secondList = await organizations(request('organizations', undefined, secondCookie))
+    expect(secondList.status).toBe(200)
+    expect((await secondList.json()).some((item: { id: string }) => item.id === firstId)).toBe(false)
+    expect((await agents(request('agents', { organizationId: firstId, deviceId: 'foreign-device' }, secondCookie)).status).toBe(403)
+    expect((await operations(request(`operations?organizationId=${firstId}`, undefined, secondCookie)).status).toBe(403)
+  })
+
   it('blocks browser database roles including sensitive auth records', async () => {
     const tables = await pool.query("SELECT relname, relrowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='public' AND relkind='r'")
     expect(tables.rows.every(table => table.relrowsecurity)).toBe(true)
