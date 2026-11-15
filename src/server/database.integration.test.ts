@@ -55,6 +55,15 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     const create = await organizations(request('organizations', { name: 'Integration', slug: unique }))
     expect(create.status).toBe(201)
     organizationId = (await create.json()).id
+    const duplicate = await organizations(request('organizations', { name: 'Duplicate', slug: unique }))
+    expect(duplicate.status).toBe(409)
+    const invalid = await organizations(request('organizations', { name: 'Invalid', slug: 'INVALID SLUG' }))
+    expect(invalid.status).toBe(400)
+    const noSession = await organizations(request('organizations', { name: 'Unauthorized', slug: 'no-session' }, ''))
+    expect(noSession.status).toBe(401)
+    const memberships = await organizations(request('organizations'))
+    expect(memberships.status).toBe(200)
+    expect((await memberships.json()).some((item: { id: string; role: string }) => item.id === organizationId && item.role === 'ADMIN')).toBe(true)
     const provision = await agents(request('agents', { organizationId, deviceId: 'device' }))
     expect(provision.status).toBe(201)
     token = (await provision.json()).token
