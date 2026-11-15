@@ -37,6 +37,18 @@ Antes do cutover: inspecionar os metadados da conexão de produção existente, 
 - Teste adicional de isolamento entre dois usuários reais de Better Auth implementado na branch da PR #40; requer CI do HEAD que contém o teste para ser considerado validado.
 - Nenhum teste de ponta a ponta foi executado contra o Neon remoto. O teste de integração bloqueia deliberadamente bancos que não sejam `localhost`/`127.0.0.1`.
 
+## Planejamento vivo (15/11/2026)
+
+| Prioridade | Tarefa | Estado | Evidência / dependência | Próxima ação |
+|---|---|---|---|---|
+| P0 | Schema PostgreSQL Neon | Validada | 16 tabelas, 16 RLS, 16 FKs, 37 índices, zero grants públicos | Preservar schema |
+| P0 | Isolamento entre dois usuários | Em andamento | Teste integrado incluído na PR #40 | Exigir CI do HEAD atual |
+| P0 | API de organizações resiliente | Validada no HEAD `3417b0e7` da PR #41 | CI #67 aprovado | Revisão e merge autorizado |
+| P0 | Conexão da aplicação ao Neon novo | Bloqueada | Integração Vercel atual não conciliada; produção não autorizada | Validar staging sem alterar produção |
+| P1 | Evitar divergência das migrations | Em andamento | Teste de paridade adicionado no commit `9a9041ec` | Conferir CI do HEAD |
+| P1 | Autenticação e permissões no Neon remoto | Pendente | Não executar testes destrutivos ou de cadastro em produção | Criar ambiente de homologação isolado |
+| P1 | Quota de previews Vercel | Em andamento | Status Vercel `build-rate-limit`; ignored build já configurado | Validar política sem forçar deploy |
+
 ## Pendências
 1. Conciliar a integração Neon preexistente na Vercel com o projeto exclusivo recém-criado; não sobrescrever automaticamente `DATABASE_URL`.
 2. Testar conectividade SSL, operações CRUD e autorização real no novo banco com credenciais de ambiente adequadas.
