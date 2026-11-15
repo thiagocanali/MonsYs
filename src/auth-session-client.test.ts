@@ -18,6 +18,20 @@ describe('browser session lifecycle', () => {
     }
   })
 
+  it('rejects empty identities, invalid emails and array payloads', async () => {
+    const invalidSessions = [
+      [],
+      { user: [] },
+      { user: { name: ' ', email: 'pessoa@example.com' } },
+      { user: { name: 'Pessoa', email: 'not-an-email' } },
+      { user: { name: 'Pessoa', email: ' ' } },
+    ]
+    for (const session of invalidSessions) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(session)))
+      await expect(fetchBrowserSession()).rejects.toThrow()
+    }
+  })
+
   it('returns null for an unauthenticated session', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(null)))
     expect(await fetchBrowserSession()).toBeNull()
