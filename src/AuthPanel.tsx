@@ -1,34 +1,9 @@
 import React from 'react'
 import { validateAuthInput } from './auth-validation.js'
+import { getAuthError, type AuthErrorPayload } from './auth-error.js'
 
 interface AuthPanelProps {
   onAuthenticated: () => Promise<boolean>
-}
-
-type AuthErrorPayload = {
-  message?: string
-  error?: string
-}
-
-function getAuthError(payload: AuthErrorPayload | null, mode: 'sign-in' | 'sign-up') {
-  const message = payload?.message ?? payload?.error
-  if (!message) return mode === 'sign-in'
-    ? 'Não foi possível entrar. Confira seu email e senha.'
-    : 'Não foi possível criar a conta. Confira os dados informados.'
-
-  const normalized = message.toLowerCase()
-  if (normalized.includes('already') || normalized.includes('exist') || normalized.includes('duplicate')) {
-    return 'Este email já está cadastrado. Entre com sua senha ou use outro email.'
-  }
-  if (normalized.includes('password') || normalized.includes('senha')) {
-    return 'A senha precisa ter pelo menos 8 caracteres.'
-  }
-  if (normalized.includes('email')) {
-    return 'Informe um email válido.'
-  }
-  return mode === 'sign-in'
-    ? 'Não foi possível entrar. Confira seu email e senha.'
-    : 'Não foi possível criar a conta. Confira os dados informados.'
 }
 
 export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
@@ -69,7 +44,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
       const payload = await response.json().catch(() => null) as AuthErrorPayload | null
       if (!response.ok) {
-        setError(getAuthError(payload, mode))
+        setError(getAuthError(payload, mode, response.status))
         return
       }
 
