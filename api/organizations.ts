@@ -36,15 +36,17 @@ export async function handler(request: Request): Promise<Response> {
         await client.query('COMMIT')
         return Response.json({ ...organization.rows[0], role: 'ADMIN' }, { status: 201 })
       } catch (error) {
+        let rollbackError: unknown
         try {
           await client.query('ROLLBACK')
-        } catch {
-          // Preserve the original database error classification if rollback fails.
+        } catch (failure) {
+          // Preserve the original error, but discard a connection with uncertain transaction state.
+          rollbackError = failure
         }
         if ((error as { code?: string }).code === '23505') return Response.json({ error: 'Organization slug already exists' }, { status: 409 })
         return Response.json({ error: 'Unable to create organization' }, { status: 500 })
       } finally {
-        client.release()
+        client.release(rollbackError instanceof Error ? rollbackError : undefined)
       }
     }
 
