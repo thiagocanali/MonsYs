@@ -4,6 +4,7 @@ import { authPool, getSession } from '../src/server/auth.js'
 export async function handler(request: Request): Promise<Response> {
   const originError = rejectForeignOrigin(request)
   if (originError) return originError
+  try {
   const session = await getSession(request)
   if (!session?.user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -44,6 +45,10 @@ export async function handler(request: Request): Promise<Response> {
   }
 
   return Response.json({ error: 'Method not allowed' }, { status: 405 })
+  } catch {
+    // Avoid leaking connection strings or internal database errors.
+    return Response.json({ error: 'Organization service temporarily unavailable' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
+  }
 }
 
 export default { fetch: handler }
