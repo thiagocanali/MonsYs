@@ -125,6 +125,7 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
 
   it('blocks browser database roles including sensitive auth records', async () => {
     const tables = await pool.query("SELECT relname, relrowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='public' AND relkind='r'")
+    expect(tables.rows).toHaveLength(16)
     expect(tables.rows.every(table => table.relrowsecurity)).toBe(true)
     const publicGrants = await pool.query(`
       SELECT table_name, grantee, privilege_type
