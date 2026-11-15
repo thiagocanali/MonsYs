@@ -30,16 +30,19 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     process.env.BETTER_AUTH_SECRET = 'disposable-integration-test-secret-32-characters'
     pool = new Pool({ connectionString })
     await pool.query("DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$; DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
-    const existing = await pool.query("SELECT to_regclass('public.agents') AS agents")
-    if (!existing.rows[0].agents) {
+    const existing = await pool.query("SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'")
+    if (existing.rows[0].count === 0) {
       const directory = new URL('../../database/migrations/', import.meta.url)
       for (const file of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
         await pool.query(await readFile(new URL(file, directory), 'utf8'))
       }
-    } else {
-      // A partially initialized database must fail fast instead of masking migration drift.
-      const tableCount = await pool.query("SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'")
-      if (tableCount.rows[0].count !== 16) throw new Error('Incomplete test database schema: expected 16 tables')
+    } else if (existing.rows[0].count !== 16) {
+      // Any partially initialized database must fail fast instead of masking migration drift.
+      throw new Error('Incomplete test database schema: expected an empty database or all 16 tables')
+    }
+    const requiredTables = await pool.query("SELECT to_regclass('public.agents') AS agents, to_regclass('public.session') AS session")
+    if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session) {
+      throw new Error('Test database is missing required MonsYs tables')
     }
     const authModule = await import('./auth.js')
     auth = authModule.auth
