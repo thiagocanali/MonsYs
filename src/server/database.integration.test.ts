@@ -41,10 +41,10 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
       }
     } else if (existing.rows[0].count !== 16) {
       // Any partially initialized database must fail fast instead of masking migration drift.
-      throw new Error('Incomplete test database schema: expected an empty database or all 16 tables')
+      throw new Error('Incomplete test database schema: expected an empty database or all 17 tables')
     }
-    const requiredTables = await pool.query("SELECT to_regclass('public.agents') AS agents, to_regclass('public.session') AS session")
-    if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session) {
+    const requiredTables = await pool.query("SELECT to_regclass('public.agents') AS agents, to_regclass('public.session') AS session, to_regclass('public.rule_evaluation_states') AS rule_states")
+    if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session || !requiredTables.rows[0].rule_states) {
       throw new Error('Test database is missing required MonsYs tables')
     }
     const authModule = await import('./auth.js')
@@ -154,6 +154,8 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
       engineB.evaluate(rule, threshold, thresholdTime, scope),
     ])
     expect(concurrent.filter(result => result.matched)).toHaveLength(1)
+    const persisted = await pool.query('SELECT state FROM public.rule_evaluation_states WHERE scope_key = $1', [scope])
+    expect(persisted.rows[0]?.state).toMatchObject({ triggered: true })
 
     const restartedEngine = new RuleEngine(new PostgresRuleEvaluationStateStore(pool))
     const afterRestartTime = new Date(start.getTime() + 90_000)
