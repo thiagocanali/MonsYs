@@ -50,11 +50,12 @@ describe('organization API unavailable responses', () => {
   })
 
   it('preserves duplicate-slug conflict when rollback itself fails', async () => {
+    const rollbackFailure = new Error('rollback unavailable')
     const client = {
       query: vi.fn()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(Object.assign(new Error('duplicate key'), { code: '23505' }))
-        .mockRejectedValueOnce(new Error('rollback unavailable')),
+        .mockRejectedValueOnce(rollbackFailure),
       release: vi.fn(),
     }
     connect.mockResolvedValue(client)
@@ -62,6 +63,7 @@ describe('organization API unavailable responses', () => {
     expect(response.status).toBe(409)
     expect(client.query).toHaveBeenCalledWith('ROLLBACK')
     expect(client.release).toHaveBeenCalledOnce()
+    expect(client.release).toHaveBeenCalledWith(rollbackFailure)
     expect(await response.text()).not.toContain('rollback unavailable')
   })
 
