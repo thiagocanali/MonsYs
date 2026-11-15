@@ -36,6 +36,10 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
       for (const file of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
         await pool.query(await readFile(new URL(file, directory), 'utf8'))
       }
+    } else {
+      // A partially initialized database must fail fast instead of masking migration drift.
+      const tableCount = await pool.query("SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'")
+      if (tableCount.rows[0].count !== 16) throw new Error('Incomplete test database schema: expected 16 tables')
     }
     const authModule = await import('./auth.js')
     auth = authModule.auth
