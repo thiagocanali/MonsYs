@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFile, readdir } from 'node:fs/promises'
 import { Pool } from 'pg'
+import { RuleEngine, createRuleEvaluationScopeKey, type RuleEvaluationStateStore } from '../domain/rules.js'
 
 const connectionString = process.env.TEST_DATABASE_URL
 // Never infer a test target from production DATABASE_URL.
@@ -11,9 +12,7 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
   let agents: typeof import('../../api/agents.js')['handler']
   let operations: typeof import('../../api/operations.js')['handler']
   let close: () => Promise<void>
-  let PostgresRuleEvaluationStateStore: typeof import('./rule-evaluation-state-store.js').PostgresRuleEvaluationStateStore
-  let RuleEngine: typeof import('../domain/rules.js').RuleEngine
-  let createRuleEvaluationScopeKey: typeof import('../domain/rules.js').createRuleEvaluationScopeKey
+  let createPostgresStore: (pool: Pool) => RuleEvaluationStateStore = () => { throw new Error('PostgreSQL state store was not initialized') }
   const origin = 'http://localhost:3000'
   let cookie = ''
   let organizationId = ''
@@ -50,8 +49,8 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     const authModule = await import('./auth.js')
     auth = authModule.auth
     close = () => authModule.authPool.end()
-    ;({ PostgresRuleEvaluationStateStore } = await import('./rule-evaluation-state-store.js'))
-    ;({ RuleEngine, createRuleEvaluationScopeKey } = await import('../domain/rules.js'))
+    const { PostgresRuleEvaluationStateStore } = await import('./rule-evaluation-state-store.js')
+    createPostgresStore = testPool => new PostgresRuleEvaluationStateStore(testPool)
     organizations = (await import('../../api/organizations.js')).handler
     agents = (await import('../../api/agents.js')).handler
     operations = (await import('../../api/operations.js')).handler
@@ -137,8 +136,8 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
 
 
   it('persists and serializes rule evaluation state across independent engine instances', async () => {
-    const storeA = new PostgresRuleEvaluationStateStore(pool)
-    const storeB = new PostgresRuleEvaluationStateStore(pool)
+    const storeA = createPostgresStore(pool)
+    const storeB = createPostgresStore(pool)
     const engineA = new RuleEngine(storeA)
     const engineB = new RuleEngine(storeB)
     const scope = createRuleEvaluationScopeKey(organizationId, 'durable-device', 'cpu-high')
@@ -157,7 +156,7 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     const persisted = await pool.query('SELECT state FROM public.rule_evaluation_states WHERE scope_key = $1', [scope])
     expect(persisted.rows[0]?.state).toMatchObject({ triggered: true })
 
-    const restartedEngine = new RuleEngine(new PostgresRuleEvaluationStateStore(pool))
+    const restartedEngine = new RuleEngine(createPostgresStore(pool))
     const afterRestartTime = new Date(start.getTime() + 90_000)
     const afterRestart = await restartedEngine.evaluate(
       rule,
