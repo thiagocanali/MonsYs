@@ -32,7 +32,7 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     await pool.query("DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$; DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
     const existing = await pool.query("SELECT to_regclass('public.agents') AS agents")
     if (!existing.rows[0].agents) {
-      const directory = new URL('../../supabase/migrations/', import.meta.url)
+      const directory = new URL('../../database/migrations/', import.meta.url)
       for (const file of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
         await pool.query(await readFile(new URL(file, directory), 'utf8'))
       }
