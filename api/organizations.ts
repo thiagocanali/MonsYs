@@ -23,6 +23,7 @@ export async function handler(request: Request): Promise<Response> {
       if (!name || name.length > 200 || !/^[a-z0-9-]{3,60}$/.test(slug)) return Response.json({ error: 'name and valid slug are required' }, { status: 400 })
 
       const client = await authPool.connect()
+      let rollbackError: unknown
       try {
         await client.query('BEGIN')
         const organization = await client.query(
@@ -36,7 +37,6 @@ export async function handler(request: Request): Promise<Response> {
         await client.query('COMMIT')
         return Response.json({ ...organization.rows[0], role: 'ADMIN' }, { status: 201 })
       } catch (error) {
-        let rollbackError: unknown
         try {
           await client.query('ROLLBACK')
         } catch (failure) {
