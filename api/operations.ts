@@ -3,6 +3,7 @@ import { createEvent, createRuleEvaluationScopeKey, RuleEngine, validateRule, ty
 import { validateHeartbeat } from '../src/domain/agent.js'
 import { OperationsWorkflow } from '../src/domain/operations.js'
 import { authenticateAgent } from '../src/server/agent-auth.js'
+import { PostgresRuleEvaluationStateStore } from '../src/server/rule-evaluation-state-store.js'
 import { saveHeartbeat } from '../src/server/heartbeat-repository.js'
 import { requireOrganizationAccess } from '../src/server/tenant-auth.js'
 import {
@@ -14,7 +15,7 @@ import {
   saveTelemetrySample,
 } from '../src/server/operations-repository.js'
 
-const ruleEngine = new RuleEngine()
+const ruleEngine = new RuleEngine(new PostgresRuleEvaluationStateStore())
 
 export async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
