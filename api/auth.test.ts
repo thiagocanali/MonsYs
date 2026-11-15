@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const handleAuth = vi.fn()
+const { handleAuth } = vi.hoisted(() => ({ handleAuth: vi.fn() }))
 vi.mock('../src/server/auth.js', () => ({ auth: { handler: handleAuth } }))
 
 import { handler } from './auth.js'
