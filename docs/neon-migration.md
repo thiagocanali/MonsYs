@@ -14,7 +14,7 @@
 ## Arquitetura e autorização
 O frontend React não conecta diretamente ao banco. As APIs Node usam `pg` com queries parametrizadas e Better Auth para cadastro/sessão. Organizações e recursos são autorizados no backend. A conexão SQL é do servidor, nunca exposta no navegador. RLS está habilitado sem políticas públicas; acesso público às tabelas foi revogado. O papel proprietário das tabelas pode acessá-las; por isso, **a autorização de tenant depende também dos filtros e checagens nas APIs**.
 
-Não há `@supabase/supabase-js` nas dependências diretas atuais. A pasta legada `supabase/migrations/` permanece temporariamente para compatibilidade com testes e histórico. Os arquivos idênticos em `database/migrations/` são o caminho neutro de provedor. Não executar ambos os conjuntos no mesmo banco.
+Não há `@supabase/supabase-js` nas dependências diretas atuais. A pasta legada `supabase/migrations/` permanece temporariamente para preservar o histórico; os testes de integração passam a executar `database/migrations/`. Os arquivos idênticos em `database/migrations/` são o caminho neutro de provedor. Não executar ambos os conjuntos no mesmo banco.
 
 ## Configuração segura
 - `DATABASE_URL`: connection string PostgreSQL Neon **com SSL obrigatório**, preferencialmente pooled para funções serverless. Guardar apenas como secret do ambiente.
