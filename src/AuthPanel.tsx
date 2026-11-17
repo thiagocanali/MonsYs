@@ -16,6 +16,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (pending) return
     setPending(true)
     setError('')
 
@@ -70,7 +71,7 @@ export function AuthPanel({ onAuthenticated }: AuthPanelProps) {
       {error && <p className="form-error" role="alert">{error}</p>}
       <button className="primary auth-submit" disabled={pending}>{pending ? 'Validando...' : mode === 'sign-in' ? 'Entrar' : 'Criar conta'}</button>
     </form>
-    <button type="button" className="link auth-switch" onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setError('') }}>
+    <button type="button" className="link auth-switch" disabled={pending} onClick={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setPassword(''); setError('') }}>
       {mode === 'sign-in' ? 'Ainda não tenho acesso' : 'Já tenho uma conta'}
     </button>
   </section>
