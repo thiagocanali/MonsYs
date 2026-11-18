@@ -30,12 +30,19 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     process.env.BETTER_AUTH_SECRET = 'disposable-integration-test-secret-32-characters'
     pool = new Pool({ connectionString })
     await pool.query("DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$; DO $$ BEGIN CREATE ROLE authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;")
-    const existing = await pool.query("SELECT to_regclass('public.agents') AS agents")
-    if (!existing.rows[0].agents) {
-      const directory = new URL('../../supabase/migrations/', import.meta.url)
+    const existing = await pool.query("SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r'")
+    if (existing.rows[0].count === 0) {
+      const directory = new URL('../../database/migrations/', import.meta.url)
       for (const file of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
         await pool.query(await readFile(new URL(file, directory), 'utf8'))
       }
+    } else if (existing.rows[0].count !== 16) {
+      // Any partially initialized database must fail fast instead of masking migration drift.
+      throw new Error('Incomplete test database schema: expected an empty database or all 16 tables')
+    }
+    const requiredTables = await pool.query("SELECT to_regclass('public.agents') AS agents, to_regclass('public.session') AS session")
+    if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session) {
+      throw new Error('Test database is missing required MonsYs tables')
     }
     const authModule = await import('./auth.js')
     auth = authModule.auth
@@ -55,6 +62,15 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     const create = await organizations(request('organizations', { name: 'Integration', slug: unique }))
     expect(create.status).toBe(201)
     organizationId = (await create.json()).id
+    const duplicate = await organizations(request('organizations', { name: 'Duplicate', slug: unique }))
+    expect(duplicate.status).toBe(409)
+    const invalid = await organizations(request('organizations', { name: 'Invalid', slug: 'INVALID SLUG' }))
+    expect(invalid.status).toBe(400)
+    const noSession = await organizations(request('organizations', { name: 'Unauthorized', slug: 'no-session' }, ''))
+    expect(noSession.status).toBe(401)
+    const memberships = await organizations(request('organizations'))
+    expect(memberships.status).toBe(200)
+    expect((await memberships.json()).some((item: { id: string; role: string }) => item.id === organizationId && item.role === 'ADMIN')).toBe(true)
     const provision = await agents(request('agents', { organizationId, deviceId: 'device' }))
     expect(provision.status).toBe(201)
     token = (await provision.json()).token
@@ -86,9 +102,45 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     expect((await operations(request(`operations?organizationId=${organizationId}`, undefined, ''))).status).toBe(401)
   })
 
+  it('isolates organization memberships between independently authenticated users', async () => {
+    const suffix = crypto.randomUUID()
+    const first = await auth.handler(request('auth/sign-up/email', {
+      name: 'Tenant A', email: `a-${suffix}@example.test`, password: 'integration-password-123',
+    }, ''))
+    expect(first.status).toBe(200)
+    const firstCookie = first.headers.getSetCookie().map(value => value.split(';')[0]).join('; ')
+    const firstOrg = await organizations(request('organizations', { name: 'Tenant A', slug: `a-${suffix}` }, firstCookie))
+    expect(firstOrg.status).toBe(201)
+    const firstId = (await firstOrg.json()).id
+
+    const second = await auth.handler(request('auth/sign-up/email', {
+      name: 'Tenant B', email: `b-${suffix}@example.test`, password: 'integration-password-123',
+    }, ''))
+    expect(second.status).toBe(200)
+    const secondCookie = second.headers.getSetCookie().map(value => value.split(';')[0]).join('; ')
+    const anonymousList = await organizations(request('organizations', undefined, ''))
+    expect(anonymousList.status).toBe(401)
+    const firstList = await organizations(request('organizations', undefined, firstCookie))
+    expect(firstList.status).toBe(200)
+    expect((await firstList.json()).some((item: { id: string }) => item.id === firstId)).toBe(true)
+    const secondList = await organizations(request('organizations', undefined, secondCookie))
+    expect(secondList.status).toBe(200)
+    expect((await secondList.json()).some((item: { id: string }) => item.id === firstId)).toBe(false)
+    expect((await agents(request('agents', { organizationId: firstId, deviceId: 'foreign-device' }, secondCookie))).status).toBe(403)
+    expect((await operations(request(`operations?organizationId=${firstId}`, undefined, secondCookie))).status).toBe(403)
+  })
+
   it('blocks browser database roles including sensitive auth records', async () => {
     const tables = await pool.query("SELECT relname, relrowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='public' AND relkind='r'")
+    expect(tables.rows).toHaveLength(16)
     expect(tables.rows.every(table => table.relrowsecurity)).toBe(true)
+    const publicGrants = await pool.query(`
+      SELECT table_name, grantee, privilege_type
+      FROM information_schema.role_table_grants
+      WHERE table_schema = 'public'
+        AND grantee IN ('PUBLIC', 'anon', 'authenticated')
+    `)
+    expect(publicGrants.rows).toEqual([])
     for (const role of ['anon', 'authenticated']) {
       const client = await pool.connect()
       try {
