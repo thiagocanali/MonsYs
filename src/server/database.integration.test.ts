@@ -2,12 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFile, readdir } from 'node:fs/promises'
 import { Pool } from 'pg'
 import { RuleEngine, createRuleEvaluationScopeKey } from '../domain/rules.js'
-import { PostgresRuleEvaluationStateStore } from './rule-evaluation-state-store.js'
 
 const connectionString = process.env.TEST_DATABASE_URL
 // Never infer a test target from production DATABASE_URL.
 describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', () => {
   let pool: Pool
+  let PostgresRuleEvaluationStateStore: typeof import('./rule-evaluation-state-store.js')['PostgresRuleEvaluationStateStore']
   let auth: typeof import('./auth.js')['auth']
   let organizations: typeof import('../../api/organizations.js')['handler']
   let agents: typeof import('../../api/agents.js')['handler']
@@ -46,6 +46,7 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session || !requiredTables.rows[0].rule_states) {
       throw new Error('Test database is missing required MonsYs tables')
     }
+    ;({ PostgresRuleEvaluationStateStore } = await import('./rule-evaluation-state-store.js'))
     const authModule = await import('./auth.js')
     auth = authModule.auth
     close = () => authModule.authPool.end()
