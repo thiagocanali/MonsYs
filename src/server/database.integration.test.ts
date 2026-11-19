@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFile, readdir } from 'node:fs/promises'
 import { Pool } from 'pg'
+import { RuleEngine, createRuleEvaluationScopeKey } from '../domain/rules.js'
+import { PostgresRuleEvaluationStateStore } from './rule-evaluation-state-store.js'
 
 const connectionString = process.env.TEST_DATABASE_URL
 // Never infer a test target from production DATABASE_URL.
@@ -36,12 +38,12 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
       for (const file of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
         await pool.query(await readFile(new URL(file, directory), 'utf8'))
       }
-    } else if (existing.rows[0].count !== 16) {
+    } else if (existing.rows[0].count !== 17) {
       // Any partially initialized database must fail fast instead of masking migration drift.
-      throw new Error('Incomplete test database schema: expected an empty database or all 16 tables')
+      throw new Error('Incomplete test database schema: expected an empty database or all 17 tables')
     }
-    const requiredTables = await pool.query("SELECT to_regclass('public.agents') AS agents, to_regclass('public.session') AS session")
-    if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session) {
+    const requiredTables = await pool.query("SELECT to_regclass('public.agents') AS agents, to_regclass('public.session') AS session, to_regclass('public.rule_evaluation_states') AS rule_states")
+    if (!requiredTables.rows[0].agents || !requiredTables.rows[0].session || !requiredTables.rows[0].rule_states) {
       throw new Error('Test database is missing required MonsYs tables')
     }
     const authModule = await import('./auth.js')
@@ -130,9 +132,34 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     expect((await operations(request(`operations?organizationId=${firstId}`, undefined, secondCookie))).status).toBe(403)
   })
 
+  it('persists and serializes rule evaluation state across engine instances', async () => {
+    const storeA = new PostgresRuleEvaluationStateStore(pool)
+    const storeB = new PostgresRuleEvaluationStateStore(pool)
+    const engineA = new RuleEngine(storeA)
+    const engineB = new RuleEngine(storeB)
+    const scope = createRuleEvaluationScopeKey(organizationId, 'durable-device', 'cpu-high')
+    const rule = { id: 'cpu-high', name: 'CPU alta', metric: 'cpu_usage', operator: '>' as const, threshold: 90, duration: 60, severity: 'WARNING' as const }
+    const start = new Date('2026-11-15T00:00:00.000Z')
+    await engineA.evaluate(rule, { metric: 'cpu_usage', value: 95, timestamp: start }, start, scope)
+    const thresholdTime = new Date(start.getTime() + 60_000)
+    const concurrent = await Promise.all([
+      engineA.evaluate(rule, { metric: 'cpu_usage', value: 95, timestamp: thresholdTime }, thresholdTime, scope),
+      engineB.evaluate(rule, { metric: 'cpu_usage', value: 95, timestamp: thresholdTime }, thresholdTime, scope),
+    ])
+    expect(concurrent.filter(result => result.matched)).toHaveLength(1)
+    const persisted = await pool.query('SELECT state FROM public.rule_evaluation_states WHERE scope_key = $1', [scope])
+    expect(persisted.rows[0]?.state).toMatchObject({ triggered: true })
+    const restartedEngine = new RuleEngine(new PostgresRuleEvaluationStateStore(pool))
+    const afterRestartTime = new Date(start.getTime() + 90_000)
+    const afterRestart = await restartedEngine.evaluate(rule, { metric: 'cpu_usage', value: 95, timestamp: afterRestartTime }, afterRestartTime, scope)
+    expect(afterRestart.matched).toBe(false)
+    expect(afterRestart.reason).toContain('already triggered')
+    await storeB.clear(scope)
+  })
+
   it('blocks browser database roles including sensitive auth records', async () => {
     const tables = await pool.query("SELECT relname, relrowsecurity FROM pg_class JOIN pg_namespace n ON n.oid=relnamespace WHERE n.nspname='public' AND relkind='r'")
-    expect(tables.rows).toHaveLength(16)
+    expect(tables.rows).toHaveLength(17)
     expect(tables.rows.every(table => table.relrowsecurity)).toBe(true)
     const publicGrants = await pool.query(`
       SELECT table_name, grantee, privilege_type
