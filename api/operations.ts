@@ -15,7 +15,13 @@ import {
   saveTelemetrySample,
 } from '../src/server/operations-repository.js'
 
-const ruleEngine = new RuleEngine(new PostgresRuleEvaluationStateStore())
+// Keep existing deployments functional until the additive migration is applied and verified.
+// Explicit opt-in prevents switching production to an unprovisioned table.
+const ruleEngine = new RuleEngine(
+  process.env.RULE_EVALUATION_PERSISTENCE === 'postgres'
+    ? new PostgresRuleEvaluationStateStore()
+    : undefined,
+)
 
 export async function handler(request: Request): Promise<Response> {
   if (request.method === 'GET') {
