@@ -1,6 +1,6 @@
 # Rule evaluation state store contract
 
-**Status:** application-level atomicity contract; no PostgreSQL migration or live database change has been made.
+**Status:** PostgreSQL adapter and additive migration are versioned, but no hosted migration or production cutover has been performed. The runtime remains in-memory by default. Enable `RULE_EVALUATION_PERSISTENCE=postgres` only after applying and verifying the migration on the target database.
 
 ## Why this contract exists
 
