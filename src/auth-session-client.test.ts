@@ -71,4 +71,25 @@ describe('browser session lifecycle', () => {
     vi.stubGlobal('fetch', request)
     await expect(revokeBrowserSession()).rejects.toThrow('Session is still active')
   })
+  it('rejects session responses with missing or non-string identity fields', async () => {
+    const invalidSessions = [
+      { user: {} },
+      { user: { name: 42, email: 'pessoa@example.com' } },
+      { user: { name: 'Pessoa', email: null } },
+      { user: { name: 'Pessoa', email: 'pessoa@' } },
+    ]
+    for (const session of invalidSessions) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(session)))
+      await expect(fetchBrowserSession()).rejects.toThrow('Invalid session user')
+    }
+  })
+
+  it('does not report logout success when the recheck response is malformed', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(Response.json({ success: true }))
+      .mockResolvedValueOnce(Response.json({ user: { name: '', email: 'pessoa@example.com' } }))
+    vi.stubGlobal('fetch', request)
+    await expect(revokeBrowserSession()).rejects.toThrow('Invalid session user')
+  })
+
 })
