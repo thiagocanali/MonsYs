@@ -32,3 +32,9 @@ A Vercel compila o frontend e publica os endpoints de `api/` com handlers Web (`
 Em 15/11/2026 foi criado o projeto Neon independente `noisy-feather-61781482` (PostgreSQL 17, região `aws-sa-east-1`, banco `monsys`), com as três migrations da aplicação aplicadas e 16 tabelas com RLS habilitado. **A conexão de produção da Vercel ainda não foi alterada nem validada contra esse novo banco.** Consulte [migração para Neon](docs/neon-migration.md) antes de configurar qualquer ambiente.
 
 Consulte a [revisão técnica e backlog priorizado](docs/engineering-review-2026-11-11.md) para evidências, limitações e plano de implantação.
+
+## Prontidão da persistência de regras
+
+A retomada de [21/11/2026](docs/project-resumption-2026-11-21.md) distingue o que está implementado da ativação remota. O adaptador PostgreSQL já existe; sua flag exige homologação e a quarta migração no banco alvo.
+
+Injete `DATABASE_CHECK_URL` pelo gerenciador de segredos da homologação e execute `npm run db:check`. O comando só consulta catálogos, não aplica migrations nem altera a configuração da aplicação. Códigos: 0 = pré-requisitos inspecionados aprovados, 1 = bloqueios encontrados, 2 = configuração/conexão indisponível. Ainda é necessário testar a aplicação com seu papel real de conexão.

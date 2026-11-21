@@ -1,3 +1,5 @@
+> Retomada atual: consulte [21/11/2026](./project-resumption-2026-11-21.md). Os status de PR/CI abaixo registram o ciclo histórico de 15/11 e não representam as pendências atuais.
+
 # Migração MonsYs para Neon PostgreSQL — 15/11/2026
 
 ## Estado verificado

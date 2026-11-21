@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFile, readdir } from 'node:fs/promises'
 import { Pool } from 'pg'
+import { inspectDatabaseReadiness } from './database-readiness.js'
 import { RuleEngine, createRuleEvaluationScopeKey } from '../domain/rules.js'
 
 const connectionString = process.env.TEST_DATABASE_URL
@@ -55,6 +56,29 @@ describe.skipIf(!connectionString)('PostgreSQL authenticated operational flow', 
     operations = (await import('../../api/operations.js')).handler
   })
   afterAll(async () => { await close?.(); await pool?.end() })
+
+  it('reports the migrated PostgreSQL database as ready for the owner connection', async () => {
+    expect(await inspectDatabaseReadiness(pool)).toMatchObject({ ready: true, checkedTables: 17, missingTables: [], ruleStateSchemaValid: true })
+  })
+
+  it('detects unsafe grants, disabled RLS and blocked roles in real PostgreSQL', async () => {
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query('GRANT SELECT ON public.rule_evaluation_states TO PUBLIC')
+      await client.query('ALTER TABLE public.session DISABLE ROW LEVEL SECURITY')
+      const unsafe = await inspectDatabaseReadiness(client)
+      expect(unsafe.ready).toBe(false)
+      expect(unsafe.tablesWithBrowserGrants).toContain('rule_evaluation_states')
+      expect(unsafe.tablesWithoutRls).toContain('session')
+      await client.query('SET LOCAL ROLE anon')
+      expect((await inspectDatabaseReadiness(client)).tablesWithoutServerAccess).toContain('incidents')
+    } finally {
+      await client.query('ROLLBACK')
+      client.release()
+    }
+    expect((await inspectDatabaseReadiness(pool)).ready).toBe(true)
+  })
 
   it('signs up, persists tenant-scoped telemetry, and enforces human and agent access', async () => {
     const unique = crypto.randomUUID()
