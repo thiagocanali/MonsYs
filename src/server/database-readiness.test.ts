@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { inspectDatabaseReadiness, REQUIRED_TABLES } from './database-readiness.js'
+import { inspectDatabaseReadiness, READINESS_SQL, REQUIRED_TABLES } from './database-readiness.js'
 
 function inventory() {
   return REQUIRED_TABLES.map(table_name => ({
@@ -14,6 +14,14 @@ function inspect(rows: ReturnType<typeof inventory>) {
 }
 
 describe('database activation readiness', () => {
+  it('uses a parameterized catalog-only query with no application row access', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: inventory() })
+    await inspectDatabaseReadiness({ query })
+    expect(query).toHaveBeenCalledExactlyOnceWith(READINESS_SQL, [[...REQUIRED_TABLES]])
+    expect(READINESS_SQL).toMatch(/FROM pg_class c JOIN pg_namespace n/)
+    expect(READINESS_SQL).toMatch(/c\.relname = ANY\(\$1::text\[\]\)/)
+    expect(READINESS_SQL).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE)\s+(?:INTO|TABLE|FROM|public\.)/i)
+  })
   it('requires the durable table in addition to the existing foundation', async () => {
     const result = await inspect(inventory().filter(row => row.table_name !== 'rule_evaluation_states'))
     expect(result.ready).toBe(false)
