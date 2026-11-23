@@ -20,9 +20,9 @@ The RuleEvaluationStateStore transact(scopeKey, operation) contract requires the
 
 The in-memory adapter serializes by key and is suitable for deterministic tests and single-process development only. It is not durable and does not coordinate separate serverless instances.
 
-## PostgreSQL adapter requirements (future implementation)
+## PostgreSQL adapter implemented in the repository
 
-A production adapter should use a dedicated table with a primary key on scope_key and a JSONB or typed-column representation of active_since, last_sample_at, and triggered.
+The versioned PostgreSQL adapter uses a dedicated table with a primary key on scope_key and a JSONB or typed-column representation of active_since, last_sample_at, and triggered.
 
 Within one database transaction, it must:
 1. Acquire a transaction-scoped advisory lock derived from the exact scope key. Hash collisions may cause extra waiting, but the primary key remains the correctness boundary.
@@ -35,4 +35,8 @@ A unique primary key on scope_key is mandatory. The adapter must not use process
 
 ## Deployment gate
 
-Do not implement or apply the production adapter until the live database inventory is reviewed and an additive migration has been tested against a disposable PostgreSQL database. The default RuleEngine remains in-memory until that work is completed; therefore cross-instance durability is not yet available.
+The adapter already exists in `src/server/rule-evaluation-state-store.ts` and its migration is `database/migrations/20261115190000_rule_evaluation_state.sql`. Do not enable it merely because these files were merged. Verify the target database and application connection role first; the runtime still selects memory unless `RULE_EVALUATION_PERSISTENCE=postgres` is explicitly configured.
+
+As inspected on 2026-11-21, the dedicated MonsYs Neon database has the first 16 tables but lacks `rule_evaluation_states`. Apply only the pending migration in isolated staging, then inject `DATABASE_CHECK_URL` and run `npm run db:check`. Exit 0 confirms the inspected schema/access prerequisites, not a full application or production approval. Test the authenticated ingestion and concurrent evaluation flow before changing the runtime flag.
+
+State persistence is transactional per scope; telemetry insertion and incident persistence are still separate transactions in the API. This adapter alone does not guarantee atomic ingestion or retry recovery. See [the current resumption report](./project-resumption-2026-11-21.md).
